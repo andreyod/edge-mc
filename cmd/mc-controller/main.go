@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
-	mckubernetes "github.com/kcp-dev/edge-mc/cmd/mc-controller/mcclient/kubernetes"
+	mckubernetes "github.com/kcp-dev/edge-mc/pkg/mcclient/kubernetes"
+	mckubestellar "github.com/kcp-dev/edge-mc/pkg/mcclient/kubestellar"
 	api_v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -45,11 +48,24 @@ func main() {
 		log.Fatalf("get client failed: %v", err)
 	}
 
-	// Test the clienset
-	log.Info("----------  List some resource in cluster1")
+	// create kubestellar cluster aware client
+	ksclient, err := mckubestellar.NewMultiCluster(ctx, managementClusterConfig)
+	if err != nil {
+		log.Fatalf("get ks client failed: %v", err)
+	}
+
+	// Test k8s clienset
+	log.Info("----------  List some k8s resource in cluster1")
 	list, _ := client.Cluster("cluster1").CoreV1().ConfigMaps(metav1.NamespaceDefault).List(ctx, metav1.ListOptions{})
 	for _, cm := range list.Items {
 		log.Infof("Cluster: cluster1 ; ObjName: %s", cm.Name)
+	}
+
+	// Test kubestellar clienset
+	log.Info("----------  List some kubestellar resource in cluster1")
+	eplist, _ := ksclient.Cluster("cluster1").EdgeV1alpha1().EdgePlacements().List(ctx, metav1.ListOptions{})
+	for _, ep := range eplist.Items {
+		log.Infof("Cluster: cluster1 ; EdgePlacement: %s", ep.Name)
 	}
 
 	log.Info("----------  Now add another cluster object for 'cluster2' and test the cluster-aware client")
@@ -67,7 +83,8 @@ func main() {
 	//upcache.NewListWatchFromClient(managementClientset.CoreV1().RESTClient(), "configmaps", metav1.NamespaceDefault, fields.Everything())
 
 	// create cross-cluster ListWatch
-	lw := client.NewListWatch(api_v1.SchemeGroupVersion, &api_v1.ConfigMapList{}, "configmaps", metav1.NamespaceAll, fields.Everything())
+	//lw := client.CrossClusterListWatch(api_v1.SchemeGroupVersion, &api_v1.ConfigMapList{}, "configmaps", metav1.NamespaceAll, fields.Everything())
+	lw := client.CrossClusterListWatch(api_v1.SchemeGroupVersion, "configmaps", metav1.NamespaceDefault, fields.Everything())
 
 	log.Info("----------  Create and run cross-cluster informer")
 	informer := upcache.NewSharedIndexInformer(
@@ -82,8 +99,11 @@ func main() {
 			log.Infof("add event for obj: %s", cm.Name)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
+			cm := oldObj.(*api_v1.ConfigMap)
+			log.Infof("update event for obj: %s", cm.Name)
 		},
 		DeleteFunc: func(obj interface{}) {
+			log.Info("delete event")
 		},
 	})
 
@@ -93,6 +113,11 @@ func main() {
 	for _, v := range li {
 		log.Infof("informer key: %s", v)
 	}
+
+	sigTerm := make(chan os.Signal, 1)
+	signal.Notify(sigTerm, syscall.SIGTERM)
+	signal.Notify(sigTerm, syscall.SIGINT)
+	<-sigTerm
 }
 
 func createClusterObject(ctx context.Context, clientset upkubernetes.Interface, cluster string) {

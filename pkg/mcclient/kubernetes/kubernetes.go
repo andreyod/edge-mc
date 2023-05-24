@@ -2,8 +2,10 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"github.com/kcp-dev/edge-mc/pkg/mcclient/listwatch"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -11,18 +13,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	log "k8s.io/klog/v2"
 )
 
-type Interface interface {
+type KubernetesClusterInterface interface {
 	// Cluster returns clientset for given cluster.
 	Cluster(name string) (client kubernetes.Interface)
-	// NewListWatch returns cross-cluster ListWatch
-	NewListWatch(gv schema.GroupVersion, listResult runtime.Object, resource string, namespace string, fieldSelector fields.Selector) *cache.ListWatch
+	// ConfigForCluster returns rest config for given cluster.
+	ConfigForCluster(name string) (*rest.Config, error)
+	// CrossClusterListWatch returns cross-cluster ListWatch
+	CrossClusterListWatch(gv schema.GroupVersion, resource string, namespace string, fieldSelector fields.Selector) *listwatch.CrossClusterListerWatcher
 }
 
 type impl map[string]*rest.Config
@@ -39,59 +42,31 @@ func (i impl) Cluster(name string) kubernetes.Interface {
 	return clientset
 }
 
-func (i impl) NewListWatch(gv schema.GroupVersion, listResult runtime.Object, resource string, namespace string, fieldSelector fields.Selector) *cache.ListWatch {
+func (i impl) ConfigForCluster(name string) (*rest.Config, error) {
+	if _, ok := i[name]; !ok {
+		return nil, errors.New("failed to get config for cluster")
+	}
+	return i[name], nil
+}
+
+func (i impl) CrossClusterListWatch(gv schema.GroupVersion, resource string, namespace string, fieldSelector fields.Selector) *listwatch.CrossClusterListerWatcher {
 	optionsModifier := func(options *metav1.ListOptions) {
 		options.FieldSelector = fieldSelector.String()
 	}
-	return i.newFilteredListWatch(gv, listResult, resource, namespace, optionsModifier)
+	clusterLW := make(map[string]*cache.ListWatch)
+	for cluster, config := range i {
+		clusterLW[cluster] = listwatch.ClusterListWatch(config, gv, resource, namespace, optionsModifier)
+	}
+	return listwatch.NewCrossClusterListerWatcher(clusterLW)
 }
 
-func (i impl) newFilteredListWatch(gv schema.GroupVersion, listResult runtime.Object, resource string, namespace string, optionsModifier func(options *metav1.ListOptions)) *cache.ListWatch {
-	// TODO make it cross-cluster. iterate over i, combine list/watch output
-	config := i["cluster1"]
-	config.GroupVersion = &gv
-	config.APIPath = "/api"
-	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
-
-	if config.UserAgent == "" {
-		config.UserAgent = rest.DefaultKubernetesUserAgent()
-	}
-	c, err := rest.RESTClientFor(config)
-	if err != nil {
-		log.Fatalf("get rest client failed: %v", err)
-	}
-	listFunc := func(options metav1.ListOptions) (runtime.Object, error) {
-		optionsModifier(&options)
-		err = c.Get().
-			Namespace(namespace).
-			Resource(resource).
-			VersionedParams(&options, metav1.ParameterCodec).
-			Do(context.TODO()).
-			Into(listResult)
-		if err != nil {
-			return listResult, err
-		}
-		return listResult, nil
-	}
-	watchFunc := func(options metav1.ListOptions) (watch.Interface, error) {
-		options.Watch = true
-		optionsModifier(&options)
-		return c.Get().
-			Namespace(namespace).
-			Resource(resource).
-			VersionedParams(&options, metav1.ParameterCodec).
-			Watch(context.TODO())
-	}
-	return &cache.ListWatch{ListFunc: listFunc, WatchFunc: watchFunc}
-}
-
-func NewMultiCluster(ctx context.Context, managerConfig *rest.Config) (Interface, error) {
+func NewMultiCluster(ctx context.Context, managerConfig *rest.Config) (KubernetesClusterInterface, error) {
 	clients := make(impl)
 	managerClient, err := kubernetes.NewForConfig(managerConfig)
 	if err != nil {
 		return clients, err
 	}
-	// TODO use factory
+	// TODO use factory to create informer for EdgeCluster(effi)
 	informer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
