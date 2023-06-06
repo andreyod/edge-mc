@@ -38,17 +38,18 @@ import (
 	edgeclusterclientset "github.com/kcp-dev/edge-mc/pkg/client/clientset/versioned/cluster"
 	edgev1a1informers "github.com/kcp-dev/edge-mc/pkg/client/informers/externalversions/edge/v1alpha1"
 	edgev1a1listers "github.com/kcp-dev/edge-mc/pkg/client/listers/edge/v1alpha1"
+	"github.com/kcp-dev/edge-mc/pkg/mcclient"
 )
 
 type placementTranslator struct {
-	context                context.Context
-	apiProvider            APIWatchMapProvider
-	spsClusterInformer     kcpcache.ScopeableSharedIndexInformer
-	syncfgClusterInformer  kcpcache.ScopeableSharedIndexInformer
-	syncfgClusterLister    edgev1a1listers.SyncerConfigClusterLister
-	mbwsInformer           k8scache.SharedIndexInformer
-	mbwsLister             tenancyv1a1listers.WorkspaceLister
-	kcpClusterClientset    kcpclusterclientset.ClusterInterface
+	context               context.Context
+	apiProvider           APIWatchMapProvider
+	spsClusterInformer    kcpcache.ScopeableSharedIndexInformer
+	syncfgClusterInformer kcpcache.ScopeableSharedIndexInformer
+	syncfgClusterLister   edgev1a1listers.SyncerConfigClusterLister
+	mbwsInformer          k8scache.SharedIndexInformer
+	mbwsLister            tenancyv1a1listers.WorkspaceLister
+	//kcpClusterClientset    kcpclusterclientset.ClusterInterface
 	discoveryClusterClient clusterdiscovery.DiscoveryClusterInterface
 	crdClusterInformer     kcpcache.ScopeableSharedIndexInformer
 	bindingClusterInformer kcpcache.ScopeableSharedIndexInformer
@@ -56,6 +57,7 @@ type placementTranslator struct {
 	edgeClusterClientset   edgeclusterclientset.ClusterInterface
 	nsClusterPreInformer   kcpkubecorev1informers.NamespaceClusterInformer
 	nsClusterClient        kcpkubecorev1client.NamespaceClusterInterface
+	mcclient               mcclient.KubestellarClusterInterface
 
 	workloadProjector interface {
 		WorkloadProjector
@@ -97,18 +99,20 @@ func NewPlacementTranslator(
 	nsClusterPreInformer kcpkubecorev1informers.NamespaceClusterInformer,
 	// for creating namespaces in mailbox workspaces
 	nsClusterClient kcpkubecorev1client.NamespaceClusterInterface,
+	//
+	mcclient mcclient.KubestellarClusterInterface,
 ) *placementTranslator {
 	amp := NewAPIWatchMapProvider(ctx, numThreads, discoveryClusterClient, crdClusterPreInformer, bindingClusterPreInformer)
 	mbwsPreInformer.Lister()
 	pt := &placementTranslator{
-		context:                ctx,
-		apiProvider:            amp,
-		spsClusterInformer:     spsClusterPreInformer.Informer(),
-		syncfgClusterInformer:  syncfgClusterPreInformer.Informer(),
-		syncfgClusterLister:    syncfgClusterPreInformer.Lister(),
-		mbwsInformer:           mbwsPreInformer.Informer(),
-		mbwsLister:             mbwsPreInformer.Lister(),
-		kcpClusterClientset:    kcpClusterClientset,
+		context:               ctx,
+		apiProvider:           amp,
+		spsClusterInformer:    spsClusterPreInformer.Informer(),
+		syncfgClusterInformer: syncfgClusterPreInformer.Informer(),
+		syncfgClusterLister:   syncfgClusterPreInformer.Lister(),
+		mbwsInformer:          mbwsPreInformer.Informer(),
+		mbwsLister:            mbwsPreInformer.Lister(),
+		//kcpClusterClientset:    kcpClusterClientset,
 		discoveryClusterClient: discoveryClusterClient,
 		crdClusterInformer:     crdClusterPreInformer.Informer(),
 		bindingClusterInformer: bindingClusterPreInformer.Informer(),
@@ -116,6 +120,7 @@ func NewPlacementTranslator(
 		edgeClusterClientset:   edgeClusterClientset,
 		nsClusterPreInformer:   nsClusterPreInformer,
 		nsClusterClient:        nsClusterClient,
+		mcclient:               mcclient,
 		whatResolver: NewWhatResolver(ctx, epClusterPreInformer, discoveryClusterClient,
 			crdClusterPreInformer, bindingClusterPreInformer, dynamicClusterClient, numThreads),
 		whereResolver: NewWhereResolver(ctx, spsClusterPreInformer, numThreads),
@@ -125,7 +130,7 @@ func NewPlacementTranslator(
 		pt.syncfgClusterInformer, pt.syncfgClusterLister,
 		customizerClusterPreInformer.Informer(), customizerClusterPreInformer.Lister(),
 		edgeClusterClientset, dynamicClusterClient,
-		nsClusterPreInformer, nsClusterClient)
+		nsClusterPreInformer, nsClusterClient, mcclient)
 
 	return pt
 }

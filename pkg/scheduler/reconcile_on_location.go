@@ -156,7 +156,8 @@ func (c *controller) reconcileOnLocation(ctx context.Context, locKey string) err
 				return err
 			}
 			nextSPS := cleanSPSByLoc(currentSPS, lws.String(), lName)
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err
@@ -184,7 +185,8 @@ func (c *controller) reconcileOnLocation(ctx context.Context, locKey string) err
 			nextSPS := cleanSPSByLoc(currentSPS, lws.String(), lName)
 			nextSPS = extendSPS(nextSPS, singles)
 
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err
@@ -214,7 +216,8 @@ func (c *controller) reconcileOnLocation(ctx context.Context, locKey string) err
 			nextSPS := cleanSPSByLoc(currentSPS, lws.String(), lName)
 			nextSPS = extendSPS(nextSPS, singles)
 
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err

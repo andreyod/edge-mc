@@ -134,7 +134,8 @@ func (c *controller) reconcileOnSyncTarget(ctx context.Context, stKey string) er
 				return err
 			}
 			nextSPS := cleanSPSBySt(currentSPS, stws.String(), stName)
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err
@@ -174,7 +175,8 @@ func (c *controller) reconcileOnSyncTarget(ctx context.Context, stKey string) er
 			additionalSingles := makeSinglePlacementsForSt(locsFilteredByStAndEp, st)
 			nextSPS = extendSPS(nextSPS, additionalSingles)
 
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err
@@ -215,7 +217,8 @@ func (c *controller) reconcileOnSyncTarget(ctx context.Context, stKey string) er
 			additionalSingles := makeSinglePlacementsForSt(locsFilteredByStAndEp, st)
 			nextSPS = extendSPS(nextSPS, additionalSingles)
 
-			_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			//_, err = c.edgeClusterClient.EdgeV1alpha1().SinglePlacementSlices().Cluster(ws.Path()).Update(ctx, nextSPS, metav1.UpdateOptions{})
+			_, err = c.mcclient.Cluster(ws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, nextSPS, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err, "failed to update SinglePlacementSlice", "workloadWorkspace", ws, "singlePlacementSlice", nextSPS.Name)
 				return err

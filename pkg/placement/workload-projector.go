@@ -55,6 +55,7 @@ import (
 	edgeclusterclientset "github.com/kcp-dev/edge-mc/pkg/client/clientset/versioned/cluster"
 	edgev1a1listers "github.com/kcp-dev/edge-mc/pkg/client/listers/edge/v1alpha1"
 	"github.com/kcp-dev/edge-mc/pkg/customize"
+	"github.com/kcp-dev/edge-mc/pkg/mcclient"
 )
 
 const SyncerConfigName = "the-one"
@@ -93,6 +94,7 @@ func NewWorkloadProjector(
 	dynamicClusterClient clusterdynamic.ClusterInterface,
 	nsClusterPreInformer kcpkubecorev1informers.NamespaceClusterInformer,
 	nsClusterClient kcpkubecorev1client.NamespaceClusterInterface,
+	mcclient mcclient.KubestellarClusterInterface,
 ) *workloadProjector {
 	wp := &workloadProjector{
 		// delay:                 2 * time.Second,
@@ -111,6 +113,7 @@ func NewWorkloadProjector(
 		dynamicClusterClient:      dynamicClusterClient,
 		nsClusterPreInformer:      nsClusterPreInformer,
 		nsClusterClient:           nsClusterClient,
+		mcclient:                  mcclient,
 
 		mbwsNameToCluster: WrapMapWithMutex[string, logicalcluster.Name](NewMapMap[string, logicalcluster.Name](nil)),
 		clusterToMBWSName: WrapMapWithMutex[logicalcluster.Name, string](NewMapMap[logicalcluster.Name, string](nil)),
@@ -315,10 +318,11 @@ type workloadProjector struct {
 	syncfgClusterLister       edgev1a1listers.SyncerConfigClusterLister
 	customizerClusterInformer kcpcache.ScopeableSharedIndexInformer
 	customizerClusterLister   edgev1a1listers.CustomizerClusterLister
-	edgeClusterClientset      edgeclusterclientset.ClusterInterface
+	edgeClusterClientset      edgeclusterclientset.ClusterInterface //AO: unused. replaced with mcclient
 	dynamicClusterClient      clusterdynamic.ClusterInterface
 	nsClusterPreInformer      kcpkubecorev1informers.NamespaceClusterInformer
-	nsClusterClient           kcpkubecorev1client.NamespaceClusterInterface
+	nsClusterClient           kcpkubecorev1client.NamespaceClusterInterface //AO: unused. replaced with mcclient
+	mcclient                  mcclient.KubestellarClusterInterface
 
 	mbwsNameToCluster MutableMap[string /*mailbox workspace name*/, logicalcluster.Name]
 	clusterToMBWSName MutableMap[logicalcluster.Name, string /*mailbox workspace name*/]
@@ -427,7 +431,8 @@ func (wpd *wpPerDestination) getDynamicDuoLocked(gr metav1.GroupResource, apiVer
 					opts.LabelSelector = opts.LabelSelector + "," + justMineStr
 				}
 			})
-		wpd.namespaceClient = wpd.wp.nsClusterClient.Cluster(mbwsCluster.Path())
+		//wpd.namespaceClient = wpd.wp.nsClusterClient.Cluster(mbwsCluster.Path())
+		wpd.namespaceClient = wpd.wp.mcclient.Cluster(mbwsCluster.String()).Kube().CoreV1().Namespaces()
 		wpd.namespacePreInformer = wpd.wp.nsClusterPreInformer.Cluster(mbwsCluster)
 		nsInformer := wpd.namespacePreInformer.Informer()
 		nsReadyChan := make(chan struct{})
@@ -682,7 +687,8 @@ func (wp *workloadProjector) syncConfigObject(ctx context.Context, scRef syncerC
 					Name: scRef.Name,
 				},
 				Spec: wp.syncerConfigSpecFromRelations(goodConfigSpecRelations)}
-			client := wp.edgeClusterClientset.EdgeV1alpha1().Cluster(scRef.Cluster.Path()).SyncerConfigs()
+			//client := wp.edgeClusterClientset.EdgeV1alpha1().Cluster(scRef.Cluster.Path()).SyncerConfigs()
+			client := wp.mcclient.Cluster(scRef.Cluster.String()).KS().EdgeV1alpha1().SyncerConfigs()
 			syncfg2, err := client.Create(ctx, syncfg, metav1.CreateOptions{FieldManager: FieldManager})
 			if logger.V(4).Enabled() {
 				logger = logger.WithValues("specNamespaces", syncfg.Spec.NamespaceScope.Namespaces,
@@ -704,7 +710,8 @@ func (wp *workloadProjector) syncConfigObject(ctx context.Context, scRef syncerC
 		return false
 	}
 	syncfg.Spec = wp.syncerConfigSpecFromRelations(goodConfigSpecRelations)
-	client := wp.edgeClusterClientset.EdgeV1alpha1().Cluster(scRef.Cluster.Path()).SyncerConfigs()
+	//client := wp.edgeClusterClientset.EdgeV1alpha1().Cluster(scRef.Cluster.Path()).SyncerConfigs()
+	client := wp.mcclient.Cluster(scRef.Cluster.String()).KS().EdgeV1alpha1().SyncerConfigs()
 	syncfg2, err := client.Update(ctx, syncfg, metav1.UpdateOptions{FieldManager: FieldManager})
 	if logger.V(4).Enabled() {
 		logger = logger.WithValues("specNamespaces", syncfg.Spec.NamespaceScope.Namespaces,

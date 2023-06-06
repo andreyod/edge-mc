@@ -229,7 +229,7 @@ func (ctl *mbCtl) sync(ctx context.Context, refany any) bool {
 	}
 	// Now we have established that the SyncTarget exists and is not being deleted
 	if workspace == nil {
-		ws := &tenancyv1alpha1.Workspace{
+		ws := &tenancyv1alpha1.Workspace{ //AO: replace with LogicalCluster
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{SyncTargetNameAnnotationKey: syncTarget.Name},
 				Name:        mbwsName,

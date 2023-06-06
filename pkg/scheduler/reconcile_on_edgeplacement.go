@@ -132,7 +132,8 @@ func (c *controller) reconcileOnEdgePlacement(ctx context.Context, epKey string)
 				},
 				Destinations: singles,
 			}
-			_, err = c.edgeClusterClient.Cluster(epws.Path()).EdgeV1alpha1().SinglePlacementSlices().Create(ctx, sps, metav1.CreateOptions{})
+			//_, err = c.edgeClusterClient.Cluster(epws.Path()).EdgeV1alpha1().SinglePlacementSlices().Create(ctx, sps, metav1.CreateOptions{})
+			_, err = c.mcclient.Cluster(epws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Create(ctx, sps, metav1.CreateOptions{})
 			if err != nil {
 				if !errors.IsAlreadyExists(err) {
 					logger.Error(err, "failed creating SinglePlacementSlice")
@@ -147,7 +148,8 @@ func (c *controller) reconcileOnEdgePlacement(ctx context.Context, epKey string)
 		}
 	} else { // update
 		currentSPS.Destinations = singles
-		_, err = c.edgeClusterClient.Cluster(epws.Path()).EdgeV1alpha1().SinglePlacementSlices().Update(ctx, currentSPS, metav1.UpdateOptions{})
+		//_, err = c.edgeClusterClient.Cluster(epws.Path()).EdgeV1alpha1().SinglePlacementSlices().Update(ctx, currentSPS, metav1.UpdateOptions{})
+		_, err = c.mcclient.Cluster(epws.String()).KS().EdgeV1alpha1().SinglePlacementSlices().Update(ctx, currentSPS, metav1.UpdateOptions{})
 		if err != nil {
 			logger.Error(err, "failed updating SinglePlacementSlice")
 			return err

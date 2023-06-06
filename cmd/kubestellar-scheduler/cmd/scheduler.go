@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,7 @@ import (
 	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
 
@@ -39,6 +41,7 @@ import (
 	scheduleroptions "github.com/kcp-dev/edge-mc/cmd/kubestellar-scheduler/options"
 	edgeclientset "github.com/kcp-dev/edge-mc/pkg/client/clientset/versioned/cluster"
 	edgeinformers "github.com/kcp-dev/edge-mc/pkg/client/informers/externalversions"
+	"github.com/kcp-dev/edge-mc/pkg/mcclient"
 	"github.com/kcp-dev/edge-mc/pkg/scheduler"
 )
 
@@ -153,10 +156,24 @@ func Run(ctx context.Context, options *scheduleroptions.Options) error {
 		logger.Error(err, "failed to create edge clientset for controller")
 		return err
 	}
+
+	kubeConfigPath := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
+	managementClusterConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if err != nil {
+		logger.Error(err, "failed to build management cluster config")
+		return err
+	}
+	mcclient, err := mcclient.NewMultiCluster(ctx, managementClusterConfig)
+	if err != nil {
+		logger.Error(err, "failed to initialize multi-cluster client")
+		return err
+	}
+
 	es, err := scheduler.NewController(
 		ctx,
 		kcpClusterClientset,
-		edgeClusterClientset,
+		edgeClusterClientset, //AO: unused. replaced by mcclient
+		mcclient,
 		edgeSharedInformerFactory.Edge().V1alpha1().EdgePlacements(),
 		edgeSharedInformerFactory.Edge().V1alpha1().SinglePlacementSlices(),
 		schedulingSharedInformerFactory.Scheduling().V1alpha1().Locations(),

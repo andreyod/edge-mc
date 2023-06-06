@@ -40,6 +40,7 @@ import (
 	edgeclientset "github.com/kcp-dev/edge-mc/pkg/client/clientset/versioned/cluster"
 	edgev1alpha1informers "github.com/kcp-dev/edge-mc/pkg/client/informers/externalversions/edge/v1alpha1"
 	edgev1alpha1listers "github.com/kcp-dev/edge-mc/pkg/client/listers/edge/v1alpha1"
+	"github.com/kcp-dev/edge-mc/pkg/mcclient"
 )
 
 const (
@@ -64,7 +65,8 @@ type controller struct {
 	queue   workqueue.RateLimitingInterface
 
 	kcpClusterClient  kcpclientset.ClusterInterface
-	edgeClusterClient edgeclientset.ClusterInterface
+	edgeClusterClient edgeclientset.ClusterInterface //AO: unused. replaced by mcclient
+	mcclient          mcclient.KubestellarClusterInterface
 
 	singlePlacementSliceLister  edgev1alpha1listers.SinglePlacementSliceClusterLister
 	singlePlacementSliceIndexer cache.Indexer
@@ -83,6 +85,7 @@ func NewController(
 	context context.Context,
 	kcpClusterClient kcpclientset.ClusterInterface,
 	edgeClusterClient edgeclientset.ClusterInterface,
+	mcclient mcclient.KubestellarClusterInterface,
 	edgePlacementAccess edgev1alpha1informers.EdgePlacementClusterInformer,
 	singlePlacementSliceAccess edgev1alpha1informers.SinglePlacementSliceClusterInformer,
 	locationAccess schedulingv1alpha1informers.LocationClusterInformer,
@@ -97,6 +100,7 @@ func NewController(
 
 		kcpClusterClient:  kcpClusterClient,
 		edgeClusterClient: edgeClusterClient,
+		mcclient:          mcclient,
 
 		edgePlacementLister:  edgePlacementAccess.Lister(),
 		edgePlacementIndexer: edgePlacementAccess.Informer().GetIndexer(),

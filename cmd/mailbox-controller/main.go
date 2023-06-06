@@ -133,13 +133,13 @@ func main() {
 
 	workspaceClientConfig.UserAgent = "mailbox-controller"
 
-	workspaceScopedClientset, err := kcpscopedclientset.NewForConfig(workspaceClientConfig)
+	workspaceScopedClientset, err := kcpscopedclientset.NewForConfig(workspaceClientConfig) //AO: replace with management cluster
 	if err != nil {
 		logger.Error(err, "Failed to create clientset for workspaces")
 	}
 
 	workspaceScopedInformerFactory := kcpinformers.NewSharedScopedInformerFactoryWithOptions(workspaceScopedClientset, resyncPeriod)
-	workspaceScopedPreInformer := workspaceScopedInformerFactory.Tenancy().V1alpha1().Workspaces()
+	workspaceScopedPreInformer := workspaceScopedInformerFactory.Tenancy().V1alpha1().Workspaces() //AO: replace with LogicalClusters
 
 	mbwsClientConfig, err := mbwsClientOpts.ToRESTConfig()
 	if err != nil {
@@ -154,7 +154,7 @@ func main() {
 	}
 
 	ctl := newMailboxController(ctx, espwPath, syncTargetClusterPreInformer, workspaceScopedPreInformer,
-		workspaceScopedClientset.TenancyV1alpha1().Workspaces(),
+		workspaceScopedClientset.TenancyV1alpha1().Workspaces(), //AO: replace with LogicalClusters
 		mbwsClientset.ApisV1alpha1().APIBindings(),
 	)
 

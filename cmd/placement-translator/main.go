@@ -62,6 +62,7 @@ import (
 	emcclusterclientset "github.com/kcp-dev/edge-mc/pkg/client/clientset/versioned/cluster"
 	emcinformers "github.com/kcp-dev/edge-mc/pkg/client/informers/externalversions"
 	edgev1a1informers "github.com/kcp-dev/edge-mc/pkg/client/informers/externalversions/edge/v1alpha1"
+	"github.com/kcp-dev/edge-mc/pkg/mcclient"
 	"github.com/kcp-dev/edge-mc/pkg/placement"
 )
 
@@ -132,6 +133,18 @@ func main() {
 		}
 	}()
 
+	kubeConfigPath := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
+	managementClusterConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if err != nil {
+		logger.Error(err, "failed to build management cluster config")
+		os.Exit(8)
+	}
+	mcclient, err := mcclient.NewMultiCluster(ctx, managementClusterConfig)
+	if err != nil {
+		logger.Error(err, "failed to initialize multi-cluster client")
+		os.Exit(9)
+	}
+
 	espwRestConfig, err := espwClientOpts.ToRESTConfig()
 	if err != nil {
 		logger.Error(err, "Failed to build config from flags", "which", espwClientOpts.which)
@@ -192,7 +205,7 @@ func main() {
 	}
 
 	espwInformerFactory := kcpinformers.NewSharedScopedInformerFactoryWithOptions(espwClientset, resyncPeriod)
-	mbwsPreInformer := espwInformerFactory.Tenancy().V1alpha1().Workspaces()
+	mbwsPreInformer := espwInformerFactory.Tenancy().V1alpha1().Workspaces() //AO: replace with LogicalClusters
 	var _ tenancyv1a1informers.WorkspaceInformer = mbwsPreInformer
 
 	// Get client config for view of APIExport of kcp scheduling API
@@ -211,7 +224,7 @@ func main() {
 	locationClusterPreInformer := sspwInformerFactory.Scheduling().V1alpha1().Locations()
 	var _ schedulingv1a1informers.LocationClusterInformer = locationClusterPreInformer
 
-	kcpClusterClientset, err := kcpclusterclientset.NewForConfig(baseRestConfig)
+	kcpClusterClientset, err := kcpclusterclientset.NewForConfig(baseRestConfig) //AO: kcpClusterClientset is unused. remove
 	if err != nil {
 		logger.Error(err, "Failed to create all-cluster clientset for kcp APIs")
 		os.Exit(60)
@@ -239,7 +252,7 @@ func main() {
 	// TODO: more
 	pt := placement.NewPlacementTranslator(concurrency, ctx, locationClusterPreInformer, epClusterPreInformer, spsClusterPreInformer, syncfgClusterPreInformer, customizerClusterPreInformer,
 		mbwsPreInformer, kcpClusterClientset, discoveryClusterClient, crdClusterPreInformer, bindingClusterPreInformer,
-		dynamicClusterClient, edgeClusterClientset, nsClusterPreInformer, nsClusterClient)
+		dynamicClusterClient, edgeClusterClientset, nsClusterPreInformer, nsClusterClient, mcclient)
 	edgeInformerFactory.Start(doneCh)
 	espwInformerFactory.Start(doneCh)
 	sspwInformerFactory.Start(doneCh)
