@@ -84,6 +84,7 @@ func (c *controller) enqueue(obj interface{}) {
 		return
 	}
 	c.queue.Add(key)
+	c.logger.Info("----------", "queue.Add", key)
 }
 
 // Run starts the controller, which stops when c.context.Done() is closed.
@@ -116,6 +117,7 @@ func (c *controller) processNextItem() bool {
 
 	// Done with this key, unblock other workers.
 	defer c.queue.Done(key)
+	c.logger.Info("----------", "key", keyRaw)
 
 	if err := c.process(keyRaw); err != nil {
 		runtime.HandleError(err)
@@ -127,6 +129,7 @@ func (c *controller) processNextItem() bool {
 }
 
 func (c *controller) process(key string) error {
+	c.logger.Info("---------- process")
 	cluster, exists, err := c.logicalClusterInformer.GetIndexer().GetByKey(key)
 	if err != nil {
 		return err
@@ -141,6 +144,7 @@ func (c *controller) process(key string) error {
 }
 
 func (c *controller) handleAdd(cluster interface{}) {
+	c.logger.Info("---------- handleAdd")
 	clusterInfo, ok := cluster.(*lcv1alpha1.LogicalCluster)
 	if !ok {
 		runtime.HandleError(errors.New("unexpected object type. expected LogicalCluster"))
@@ -172,6 +176,7 @@ func (c *controller) handleAdd(cluster interface{}) {
 
 // handleDelete deletes cluster from the cache maps
 func (c *controller) handleDelete(clusterName string) {
+	c.logger.Info("---------- handleDelete")
 	c.multiClusterClient.lock.Lock()
 	defer c.multiClusterClient.lock.Unlock()
 	if _, ok := c.multiClusterClient.configs[clusterName]; !ok {
