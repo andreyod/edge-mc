@@ -26,6 +26,9 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -43,6 +46,8 @@ type KubestellarClusterInterface interface {
 	Cluster(name string, namespace ...string) (client mcclientset.Interface)
 	// ConfigForCluster returns rest config for given cluster.
 	ConfigForCluster(name string, namespace ...string) (*rest.Config, error)
+	// CrossClusterListWatch returns cross-cluster ListWatch
+	CrossClusterListWatch(gv schema.GroupVersion, resource string, namespace string, listObj runtime.Object, fieldSelector fields.Selector) (*CrossClusterListerWatcher, error)
 }
 
 type multiClusterClient struct {
@@ -61,7 +66,7 @@ func (mcc *multiClusterClient) Cluster(name string, namespace ...string) mcclien
 	clientset, ok := mcc.clientsets[key]
 	if !ok {
 		// Try to get LogicalCluster from API server.
-		if clientset, err = mcc.getFromServer(name, ns); err != nil {
+		if clientset, _, err = mcc.getFromServer(name, ns); err != nil {
 			panic(fmt.Sprintf("invalid cluster name: %s. error: %v", name, err))
 		}
 	}
@@ -69,13 +74,37 @@ func (mcc *multiClusterClient) Cluster(name string, namespace ...string) mcclien
 }
 
 func (mcc *multiClusterClient) ConfigForCluster(name string, namespace ...string) (*rest.Config, error) {
-	key, _ := namespaceKey(name, namespace)
+	key, ns := namespaceKey(name, namespace)
+	var err error
 	mcc.lock.Lock()
 	defer mcc.lock.Unlock()
-	if _, ok := mcc.configs[key]; !ok {
-		return nil, fmt.Errorf("failed to get config for cluster: %s", name)
+	config, ok := mcc.configs[key]
+	if !ok {
+		if _, config, err = mcc.getFromServer(name, ns); err != nil {
+			return nil, err
+		}
 	}
-	return mcc.configs[key], nil
+	return config, nil
+}
+
+func (mcc *multiClusterClient) CrossClusterListWatch(gv schema.GroupVersion, resource string, namespace string, listObj runtime.Object, fieldSelector fields.Selector) (*CrossClusterListerWatcher, error) {
+	// check if we have clusters to list/watch
+	clusters, err := mcc.managerClientset.LogicalclusterV1alpha1().LogicalClusters(metav1.NamespaceAll).List(mcc.ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if len(clusters.Items) == 0 {
+		return nil, errors.New("no logical clusters found")
+	}
+
+	options := metav1.ListOptions{}
+	options.FieldSelector = fieldSelector.String()
+
+	clusterLW := make(map[string]*cache.ListWatch)
+	for cluster, config := range mcc.configs {
+		clusterLW[cluster] = ClusterListWatch(mcc.ctx, config, gv, resource, namespace, listObj, &options)
+	}
+	return NewCrossClusterListerWatcher(mcc.ctx, clusterLW), nil
 }
 
 var client *multiClusterClient
@@ -123,28 +152,28 @@ func (mcc *multiClusterClient) startClusterCollection(ctx context.Context, manag
 
 // getFromServer will query API server for specific LogicalCluster and cache it if it exists and ready.
 // getFromServer caller function should acquire the mcc lock.
-func (mcc *multiClusterClient) getFromServer(name string, namespace string) (*mcclientset.Clientset, error) {
+func (mcc *multiClusterClient) getFromServer(name string, namespace string) (*mcclientset.Clientset, *rest.Config, error) {
 	cluster, err := mcc.managerClientset.LogicalclusterV1alpha1().LogicalClusters(namespace).Get(mcc.ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if cluster.Status.Phase != lcv1alpha1.LogicalClusterPhaseReady {
-		return nil, errors.New("cluster is not ready")
+		return nil, nil, errors.New("cluster is not ready")
 	}
 	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.Status.ClusterConfig))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cs, err := mcclientset.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Calling function should acquire the mcc lock
 	mcc.configs[cluster.Name] = config
 	mcc.clientsets[cluster.Name] = cs
 
-	return cs, nil
+	return cs, config, nil
 }
 
 func namespaceKey(name string, namespaces []string) (key string, namespace string) {
