@@ -55,8 +55,8 @@ type whatResolver struct {
 	queue      workqueue.RateLimitingInterface
 	receiver   MappingReceiver[ExternalName, ResolvedWhat]
 
-	edgePlacementInformer kcpcache.ScopeableSharedIndexInformer
-	edgePlacementLister   edgev2alpha1listers.EdgePlacementClusterLister
+	edgePlacementInformer upstreamcache.SharedIndexInformer
+	edgePlacementLister   edgev2alpha1listers.EdgePlacementLister
 
 	discoveryClusterClient    clusterdiscovery.DiscoveryClusterInterface
 	crdClusterPreInformer     kcpinformers.GenericClusterInformer
@@ -111,7 +111,7 @@ type objectDetails struct {
 // invoke that function after the namespace informer has synced.
 func NewWhatResolver(
 	ctx context.Context,
-	edgePlacementPreInformer edgev2alpha1informers.EdgePlacementClusterInformer,
+	edgePlacementPreInformer edgev2alpha1informers.EdgePlacementInformer,
 	discoveryClusterClient clusterdiscovery.DiscoveryClusterInterface,
 	crdClusterPreInformer kcpinformers.GenericClusterInformer,
 	bindingClusterPreInformer kcpinformers.GenericClusterInformer,
@@ -460,7 +460,7 @@ func (wr *whatResolver) processResource(ctx context.Context, cluster logicalclus
 // process returns true on success or unrecoverable error, false to retry
 func (wr *whatResolver) processEdgePlacement(ctx context.Context, cluster logicalcluster.Name, epName ObjectName) bool {
 	logger := klog.FromContext(ctx)
-	ep, err := wr.edgePlacementLister.Cluster(cluster).Get(string(epName))
+	ep, err := wr.edgePlacementLister.Get(string(epName))
 	if err != nil {
 		if !k8sapierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to fetch EdgePlacement from local cache")
