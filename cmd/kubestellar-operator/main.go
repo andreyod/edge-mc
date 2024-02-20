@@ -28,6 +28,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -60,11 +62,15 @@ func main() {
 	var probeAddr string
 	var wdsName string
 	var wdsLabel string
+	var wdsKubeconfigPath string
+	var imbsKubeconfigPath string
 	var allowedGroupsString string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&wdsName, "wds-name", "", "name of the workload description space to connect to")
 	flag.StringVar(&wdsLabel, "wds-label", "", "label of the workload description space to connect to")
+	flag.StringVar(&wdsKubeconfigPath, "wds-kubeconfig", "", "path to the workload description space kubeconfig file")
+	flag.StringVar(&imbsKubeconfigPath, "imbs-kubeconfig", "", "path to the transport space kubeconfig file")
 	flag.StringVar(&allowedGroupsString, "api-groups", "", "list of allowed api groups, comma separated. Empty string means all API groups are allowed")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -120,21 +126,40 @@ func main() {
 
 	// get the config for WDS
 	setupLog.Info("Getting config for WDS", "name", wdsName)
-	wdsRestConfig, wdsName, err := util.GetWDSKubeconfig(setupLog, wdsName, wdsLabel)
-	if err != nil {
-		setupLog.Error(err, "unable to get WDS kubeconfig")
-		os.Exit(1)
+	var wdsRestConfig *rest.Config
+	if wdsKubeconfigPath != "" {
+		wdsRestConfig, err = clientcmd.BuildConfigFromFlags("", wdsKubeconfigPath)
+		if err != nil {
+			setupLog.Error(err, "unable to get WDS kubeconfig from flags", "wdsKubeconfigPath", wdsKubeconfigPath)
+			os.Exit(1)
+		}
+	} else {
+		wdsRestConfig, wdsName, err = util.GetWDSKubeconfig(setupLog, wdsName, wdsLabel)
+		if err != nil {
+			setupLog.Error(err, "unable to get WDS kubeconfig")
+			os.Exit(1)
+		}
 	}
 	setupLog.Info("Got config for WDS", "name", wdsName)
 
 	// get the config for IMBS
 	setupLog.Info("Getting config for IMBS")
-	imbsRestConfig, imbsName, err := util.GetIMBSKubeconfig(setupLog)
-	if err != nil {
-		setupLog.Error(err, "unable to get IMBS kubeconfig")
-		os.Exit(1)
+	var imbsRestConfig *rest.Config
+	var imbsName string
+	if imbsKubeconfigPath != "" {
+		imbsRestConfig, err = clientcmd.BuildConfigFromFlags("", imbsKubeconfigPath)
+		if err != nil {
+			setupLog.Error(err, "unable to get IMBS kubeconfig from flags", "imbsKubeconfigPath", imbsKubeconfigPath)
+			os.Exit(1)
+		}
+	} else {
+		imbsRestConfig, imbsName, err = util.GetIMBSKubeconfig(setupLog)
+		if err != nil {
+			setupLog.Error(err, "unable to get IMBS kubeconfig")
+			os.Exit(1)
+		}
+		setupLog.Info("Got config for IMBS", "name", imbsName)
 	}
-	setupLog.Info("Got config for IMBS", "name", imbsName)
 
 	// start the binding controller
 	bindingController, err := binding.NewController(mgr.GetLogger(), wdsRestConfig, imbsRestConfig, wdsName, allowedGroupsSet)
