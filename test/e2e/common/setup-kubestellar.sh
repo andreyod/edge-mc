@@ -61,12 +61,27 @@ fi
 kflex create imbs1 --type vcluster -p ocm $disable_chatty_status
 : imbs1 created.
 
+function create_cluster() {
+  cluster=$1
+  kind create cluster --name $cluster
+  kubectl config rename-context kind-${cluster} $cluster
+  clusteradm --context imbs1 get token | grep '^clusteradm join' | sed "s/<cluster_name>/${cluster}/" | awk '{print $0 " --context '${cluster}' --singleton --force-internal-endpoint-lookup"}' | sh
+}
+sleep 20
+create_cluster cluster1
+create_cluster cluster2
 :
 : -------------------------------------------------------------------------
 : Install singleton status return addon in IMBS1
 :
 wait-for-cmd kubectl --context imbs1 api-resources "|" grep managedclusteraddons
-helm --kube-context imbs1 upgrade --install status-addon -n open-cluster-management oci://ghcr.io/kubestellar/ocm-status-addon-chart --version v0.2.0-rc3
+#helm --kube-context imbs1 upgrade --install status-addon -n open-cluster-management oci://ghcr.io/kubestellar/ocm-status-addon-chart --version v0.2.0-rc3
+cd /home/andreyo/go/src/github.com/kubestellar/ocm-status-addon
+make ko-local-build
+make kind-load-image CLUSTERS="kubeflex cluster1 cluster2"
+make deploy DEFAULT_IMBS_CONTEXT=imbs1
+git restore config/manager/kustomization.yaml
+cd -
 
 :
 : -------------------------------------------------------------------------
@@ -112,15 +127,15 @@ echo "transport controller is running as background process."
 : -------------------------------------------------------------------------
 : Create clusters and register with OCM
 :
-function create_cluster() {
-  cluster=$1
-  kind create cluster --name $cluster
-  kubectl config rename-context kind-${cluster} $cluster
-  clusteradm --context imbs1 get token | grep '^clusteradm join' | sed "s/<cluster_name>/${cluster}/" | awk '{print $0 " --context '${cluster}' --singleton --force-internal-endpoint-lookup"}' | sh
-}
+#function create_cluster() {
+#  cluster=$1
+#  kind create cluster --name $cluster
+#  kubectl config rename-context kind-${cluster} $cluster
+#  clusteradm --context imbs1 get token | grep '^clusteradm join' | sed "s/<cluster_name>/${cluster}/" | awk '{print $0 " --context '${cluster}' --force-internal-endpoint-lookup"}' | sh
+#}
 
-create_cluster cluster1
-create_cluster cluster2
+#create_cluster cluster1
+#create_cluster cluster2
 
 : Wait for csrs in imbs1
 wait-for-cmd '(($(kubectl --context imbs1 get csr 2>/dev/null | grep -c Pending) >= 2))'

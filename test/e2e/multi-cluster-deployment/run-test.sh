@@ -37,4 +37,4 @@ COMMON_SRCS="${SRC_DIR}/../common"
 source "${COMMON_SRCS}/setup-shell.sh"
 "${COMMON_SRCS}/setup-kubestellar.sh" $setup_flags
 "${SRC_DIR}/use-kubestellar.sh"
-"${SRC_DIR}/update-delete.sh"
+#"${SRC_DIR}/update-delete.sh"
