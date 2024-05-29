@@ -47,10 +47,12 @@ var _ = ginkgo.Describe("end to end testing", func() {
 			[]metav1.LabelSelector{
 				{MatchLabels: map[string]string{"location-group": "edge"}},
 			},
-			[]ksapi.DownsyncObjectTest{
-				{ObjectSelectors: []metav1.LabelSelector{
-					{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}},
-				}}})
+			[]ksapi.DownsyncObjectTestAndStatusCollection{
+				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}}},
+				}},
+			},
+		)
 	})
 
 	ctx := context.Background()
@@ -102,10 +104,12 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"location-group": "edge"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}}},
+					}},
+				},
+			)
 			util.ValidateNumDeployments(ctx, wec1, ns, 1)
 			util.ValidateNumDeployments(ctx, wec2, ns, 1)
 
@@ -149,13 +153,13 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"name": "cluster1"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{
-							"label1": "test1",
-							"label2": "test2",
-						}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{
+							{MatchLabels: map[string]string{"label1": "test1", "label2": "test2"}}},
+					}},
+				},
+			)
 			util.ValidateNumDeployments(ctx, wec1, ns, 1)
 			util.ValidateNumDeployments(ctx, wec2, ns, 0)
 
@@ -189,11 +193,15 @@ var _ = ginkgo.Describe("end to end testing", func() {
 						{Key: "name", Operator: metav1.LabelSelectorOpIn, Values: []string{"cluster1", "cluster2", "cluster3"}},
 					}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"label1": "A"}},
-						{MatchLabels: map[string]string{"label1": "B"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{
+							{MatchLabels: map[string]string{"label1": "A"}},
+							{MatchLabels: map[string]string{"label1": "B"}},
+						},
+					}},
+				},
+			)
 			util.ValidateNumDeployments(ctx, wec1, ns, 2)
 			util.ValidateNumDeployments(ctx, wec2, ns, 2)
 		})
@@ -216,11 +224,13 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"location-group": "edge"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectNames: []string{"three"}},
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"label1": "C"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectNames:     []string{"three"},
+						ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"label1": "C"}}},
+					}},
+				},
+			)
 			util.ValidateNumDeployments(ctx, wec1, ns, 1)
 			util.ValidateNumDeployments(ctx, wec2, ns, 1)
 		})
@@ -237,10 +247,12 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"name": "cluster1"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx-singleton"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx-singleton"}}},
+					}},
+				},
+			)
 			patch := []byte(`{"spec":{"wantSingletonReportedState": true}}`)
 			_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
 				ctx, "nginx-singleton", types.MergePatchType, patch, metav1.PatchOptions{})
@@ -265,10 +277,12 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"name": "cluster1"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-service"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-service"}}},
+					}},
+				},
+			)
 			util.ValidateNumServices(ctx, wec1, ns, 1)
 		})
 		ginkgo.It("properly starts a job with metadata.generateName", func() {
@@ -277,10 +291,12 @@ var _ = ginkgo.Describe("end to end testing", func() {
 				[]metav1.LabelSelector{
 					{MatchLabels: map[string]string{"name": "cluster1"}},
 				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-job"}},
-					}}})
+				[]ksapi.DownsyncObjectTestAndStatusCollection{
+					{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+						ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-job"}}},
+					}},
+				},
+			)
 			util.ValidateNumJobs(ctx, wec1, ns, 1)
 		})
 	})
@@ -326,6 +342,65 @@ var _ = ginkgo.Describe("end to end testing", func() {
 			util.Expect1PodOfEach(ctx, coreCluster, "wds1-system", "kubestellar-controller-manager", "transport-controller")
 			util.Expect1PodOfEach(ctx, coreCluster, "kubeflex-system", "kubeflex-controller-manager", "postgres-postgresql-0")
 			util.Expect1PodOfEach(ctx, coreCluster, "its1-system", "vcluster")
+		})
+	})
+
+	ginkgo.Context("combined status testing", func() {
+		workloadName := "nginx"
+		bpName := "nginx-combinedstatus"
+		fullStatusCollectorName := "full-status"
+		otherStatusCollectorName := "tbd-status"
+
+		clusterSelector := []metav1.LabelSelector{
+			{MatchLabels: map[string]string{"location-group": "edge"}},
+		}
+		testAndStatusCollection := []ksapi.DownsyncObjectTestAndStatusCollection{
+			{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+				ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": workloadName}}},
+			},
+				StatusCollectors: []string{},
+			},
+		}
+
+		ginkgo.It("test full status", func() {
+			util.CreateStatusCollector(ctx, ksWds, fullStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					Select: []ksapi.NamedExpression{{
+						Name: "status",
+						Def:  "object.status",
+					}},
+					Limit: 20,
+				})
+
+			testAndStatusCollection[0].StatusCollectors = []string{fullStatusCollectorName}
+			util.CreateBindingPolicy(ctx, ksWds, bpName, clusterSelector, testAndStatusCollection)
+
+			csName := util.GetCombinedStatuseName(ctx, ksWds, wds, ns, workloadName, bpName)
+			cs, err := ksWds.ControlV1alpha1().CombinedStatuses(ns).Get(ctx, csName, metav1.GetOptions{})
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.ExpectWithOffset(1, len(cs.Results)).To(gomega.Equal(1))
+
+			// TODO Validate CS results
+		})
+		ginkgo.It("test otherTBD status", func() {
+			util.CreateStatusCollector(ctx, ksWds, otherStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					Select: []ksapi.NamedExpression{{
+						Name: "status",
+						Def:  "object.status",
+					}},
+					Limit: 20,
+				})
+
+			testAndStatusCollection[0].StatusCollectors = []string{otherStatusCollectorName}
+			util.CreateBindingPolicy(ctx, ksWds, bpName, clusterSelector, testAndStatusCollection)
+
+			csName := util.GetCombinedStatuseName(ctx, ksWds, wds, ns, workloadName, bpName)
+			cs, err := ksWds.ControlV1alpha1().CombinedStatuses(ns).Get(ctx, csName, metav1.GetOptions{})
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.ExpectWithOffset(1, len(cs.Results)).To(gomega.Equal(1))
+
+			// TODO Validate CS results
 		})
 	})
 
