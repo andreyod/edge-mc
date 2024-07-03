@@ -98,6 +98,10 @@ type combinedStatusRef string
 // statusCollectorRef is a workqueue item that references a StatusCollector
 type statusCollectorRef string
 
+// singletonWorkStatusRef is a workqueue item that references a WorkStatus
+// that is a singleton status
+type singletonWorkStatusRef workStatusRef
+
 // Create a new  status controller
 func NewController(wdsRestConfig *rest.Config, itsRestConfig *rest.Config, wdsName string,
 	bindingResolutionBroker binding.ResolutionBroker) (*Controller, error) {
@@ -311,6 +315,20 @@ func (c *Controller) runWorkStatusInformer(ctx context.Context) {
 			if shouldSkipUpdate(old, new) {
 				return
 			}
+
+			// if old has singleton status label and new does not, then we need to pass the label to
+			// handleWorkStatus for it to remove the status from the source object
+			if _, ok := old.(metav1.Object).GetLabels()[util.BindingPolicyLabelSingletonStatusKey]; ok {
+				if _, ok := new.(metav1.Object).GetLabels()[util.BindingPolicyLabelSingletonStatusKey]; !ok {
+					// add label to new object
+					labels := new.(metav1.Object).GetLabels()
+					if labels == nil {
+						labels = make(map[string]string)
+					}
+
+					labels[util.BindingPolicyLabelSingletonStatusKey] = util.BindingPolicyLabelSingletonStatusValueUnset
+				}
+			}
 			c.handleWorkStatus(new)
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -352,11 +370,16 @@ func (c *Controller) handleWorkStatus(obj any) {
 		return
 	}
 
+	_, ok := obj.(metav1.Object).GetLabels()[util.BindingPolicyLabelSingletonStatusKey]
+	if !ok {
+		c.workqueue.Add(*wsRef)
+	} else {
+		c.workqueue.Add(singletonWorkStatusRef(*wsRef))
+	}
+
 	c.logger.V(5).Info("Enqueuing reference to WorkStatus because of informer event",
 		"sourceObjectName", wsRef.sourceObjectIdentifier.ObjectName,
 		"sourceObjectGVK", wsRef.sourceObjectIdentifier.GVK, "wecName", wsRef.wecName)
-
-	c.workqueue.Add(*wsRef)
 }
 
 // runWorker is a long-running function that will continually call the
@@ -412,6 +435,8 @@ func (c *Controller) reconcile(ctx context.Context, item any) error {
 	switch ref := item.(type) {
 	case workStatusRef:
 		return c.syncWorkStatus(ctx, ref)
+	case singletonWorkStatusRef:
+		return c.syncSingletonWorkStatus(ctx, ref)
 	case bindingRef:
 		return c.syncBinding(ctx, string(ref))
 	case statusCollectorRef:
