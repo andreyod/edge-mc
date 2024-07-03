@@ -62,15 +62,11 @@ func (c *Controller) syncCombinedStatus(ctx context.Context, ref string) error {
 		return fmt.Errorf("failed to get CombinedStatus from informer cache (ns=%v, name=%v): %w", ns, name, err)
 	}
 
-	if c.combinedStatusResolver.CompareCombinedStatus(*bindingName, *sourceObjectIdentifier, combinedStatus) {
-		// no change
-		return nil
-	}
-
-	// update combined status
-	generatedCombinedStatus := c.combinedStatusResolver.GenerateCombinedStatus(*bindingName, *sourceObjectIdentifier)
+	generatedCombinedStatus := c.combinedStatusResolver.CompareCombinedStatus(*bindingName,
+		*sourceObjectIdentifier, combinedStatus)
 	if generatedCombinedStatus == nil {
-		return c.deleteCombinedStatus(ctx, ns, name)
+		logger.Info("CombinedStatus is up-to-date", "ns", ns, "name", name)
+		return nil
 	}
 
 	if err = c.updateOrCreateCombinedStatus(ctx, combinedStatus, generatedCombinedStatus); err != nil {

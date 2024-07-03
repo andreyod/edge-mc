@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"sync"
 
@@ -281,8 +282,43 @@ func (c *combinedStatusResolution) generateCombinedStatus(bindingName string,
 	return addLabelsToCombinedStatus(combinedStatus, bindingName, workloadObjectIdentifier)
 }
 
-func (c *combinedStatusResolution) compareCombinedStatus(status *v1alpha1.CombinedStatus) bool {
-	return false //TODO
+func (c *combinedStatusResolution) compareCombinedStatus(status *v1alpha1.CombinedStatus,
+	bindingName string, sourceObjectIdentifier util.ObjectIdentifier) *v1alpha1.CombinedStatus {
+	c.RLock()
+	defer c.RUnlock()
+
+	localCombinedStatus := c.generateCombinedStatus(bindingName, sourceObjectIdentifier)
+
+	// check labels
+	if !validateCombinedStatusLabels(status, bindingName, sourceObjectIdentifier) {
+		return localCombinedStatus
+	}
+
+	if len(localCombinedStatus.Results) != len(status.Results) {
+		return localCombinedStatus
+	}
+	// make map of name -> content and check if all mapped. This is sufficient since size matches,
+	// and the names are unique due to being that of cluster-wide resource name (status collector).
+	localResultsMap := abstract.SliceToPrimitiveMap(localCombinedStatus.Results,
+		func(namedStatusCombination v1alpha1.NamedStatusCombination) string {
+			return namedStatusCombination.Name
+		},
+		func(namedStatusCombination v1alpha1.NamedStatusCombination) v1alpha1.NamedStatusCombination {
+			return namedStatusCombination
+		})
+
+	for _, statusCombination := range status.Results {
+		if _, ok := localResultsMap[statusCombination.Name]; !ok {
+			return localCombinedStatus
+		}
+
+		localStatusCombination := localResultsMap[statusCombination.Name]
+		if !statusCombinationEqual(&statusCombination, &localStatusCombination) {
+			return localCombinedStatus
+		}
+	}
+
+	return nil
 }
 
 // evaluateWorkStatus evaluates the workstatus per all statuscollectors in the
@@ -435,6 +471,35 @@ func addLabelsToCombinedStatus(combinedStatus *v1alpha1.CombinedStatus,
 	combinedStatus.Labels["status.kubestellar.io/binding-policy"] = bindingName // identical to binding-policy name
 
 	return combinedStatus
+}
+
+func validateCombinedStatusLabels(combinedStatus *v1alpha1.CombinedStatus,
+	bindingName string, workloadObjectIdentifier util.ObjectIdentifier) bool {
+	if len(combinedStatus.Labels) != 5 {
+		return false
+	}
+
+	if combinedStatus.Labels["status.kubestellar.io/api-group"] != workloadObjectIdentifier.GVR().Group {
+		return false
+	}
+
+	if combinedStatus.Labels["status.kubestellar.io/resource"] != workloadObjectIdentifier.GVR().Resource {
+		return false
+	}
+
+	if combinedStatus.Labels["status.kubestellar.io/namespace"] != workloadObjectIdentifier.ObjectName.Namespace {
+		return false
+	}
+
+	if combinedStatus.Labels["status.kubestellar.io/name"] != workloadObjectIdentifier.ObjectName.Name {
+		return false
+	}
+
+	if combinedStatus.Labels["status.kubestellar.io/binding-policy"] != bindingName {
+		return false
+	}
+
+	return true
 }
 
 func handleSelect(scName string, scData *statusCollectorData) *v1alpha1.NamedStatusCombination {
@@ -684,5 +749,85 @@ func getCombinedFieldSubject(combinedFieldNamedAgg v1alpha1.NamedAggregator, wsD
 	default:
 		runtime2.HandleError(fmt.Errorf("combinedField subject is not a numeric value"))
 		return nil
+	}
+}
+
+func statusCombinationEqual(a, b *v1alpha1.NamedStatusCombination) bool {
+	if a.Name != b.Name {
+		return false
+	}
+
+	if len(a.ColumnNames) != len(b.ColumnNames) {
+		return false
+	}
+
+	for i := range a.ColumnNames {
+		if a.ColumnNames[i] != b.ColumnNames[i] {
+			return false
+		}
+	}
+
+	if len(a.Rows) != len(b.Rows) {
+		return false
+	}
+
+	// rows may noy be named, check rows one by one across all columns
+	for _, aRow := range a.Rows {
+		// check if identical to at least one b row
+		found := false
+		for _, bRow := range b.Rows {
+			if statusCombinationRowEqual(&aRow, &bRow) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return false
+		}
+	}
+
+	return true
+}
+
+func statusCombinationRowEqual(a, b *v1alpha1.StatusCombinationRow) bool {
+	if a.Name != b.Name {
+		return false
+	}
+
+	if len(a.Columns) != len(b.Columns) {
+		return false
+	}
+
+	for i := range a.Columns {
+		if !valueEqual(&a.Columns[i], &b.Columns[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func valueEqual(a, b *v1alpha1.Value) bool {
+	if a.Type != b.Type {
+		return false
+	}
+
+	switch a.Type {
+	case v1alpha1.TypeString:
+		return *a.String == *b.String
+	case v1alpha1.TypeNumber:
+		return *a.Number == *b.Number
+	case v1alpha1.TypeBool:
+		return *a.Bool == *b.Bool
+	case v1alpha1.TypeObject:
+		var v1, v2 interface{}
+		json.Unmarshal([]byte(a.Object.Raw), &v1)
+		json.Unmarshal([]byte(b.Object.Raw), &v2)
+		return reflect.DeepEqual(v1, v2)
+	case v1alpha1.TypeNull:
+		return true
+	default:
+		return false
 	}
 }

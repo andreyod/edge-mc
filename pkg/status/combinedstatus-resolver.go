@@ -33,16 +33,12 @@ import (
 )
 
 type CombinedStatusResolver interface {
-	// GenerateCombinedStatus generates a CombinedStatus object for the given
-	// binding name and workload object identifier.
-	// If no resolution is associated with the given combination, nil is returned.
-	GenerateCombinedStatus(bindingName string, objectIdentifier util.ObjectIdentifier) *v1alpha1.CombinedStatus
-
 	// CompareCombinedStatus compares the given CombinedStatus object with the
 	// one associated with the given binding name and workload object identifier.
-	// True is returned in case of a match, false otherwise.
+	// If the in-memory state differs from the given object, the function returns
+	// the up-to-date CombinedStatus object. Otherwise, nil.
 	CompareCombinedStatus(bindingName string, objectIdentifier util.ObjectIdentifier,
-		combinedStatus *v1alpha1.CombinedStatus) bool
+		combinedStatus *v1alpha1.CombinedStatus) *v1alpha1.CombinedStatus
 
 	// NoteBindingResolution notes a binding resolution for status collection.
 	//
@@ -139,38 +135,22 @@ type combinedStatusResolver struct {
 	statusCollectorNameToSpec map[string]*v1alpha1.StatusCollectorSpec
 }
 
-// GenerateCombinedStatus generates a CombinedStatus object for the given
-// binding name and workload object identifier.
-// If no resolution is associated with the given combination, nil is returned.
-func (c *combinedStatusResolver) GenerateCombinedStatus(bindingName string,
-	objectIdentifier util.ObjectIdentifier) *v1alpha1.CombinedStatus {
+// CompareCombinedStatus compares the given CombinedStatus object with the
+// one associated with the given binding name and workload object identifier.
+// If the in-memory state differs from the given object, the function returns
+// the up-to-date CombinedStatus object. Otherwise, nil.
+func (c *combinedStatusResolver) CompareCombinedStatus(bindingName string,
+	objectIdentifier util.ObjectIdentifier, combinedStatus *v1alpha1.CombinedStatus) *v1alpha1.CombinedStatus {
 	c.RLock()
 	defer c.RUnlock()
 
 	if resolutions, exists := c.bindingNameToResolutions[bindingName]; exists {
 		if resolution, exists := resolutions[objectIdentifier]; exists {
-			return resolution.generateCombinedStatus(bindingName, objectIdentifier)
+			return resolution.compareCombinedStatus(combinedStatus, bindingName, objectIdentifier)
 		}
 	}
 
 	return nil
-}
-
-// CompareCombinedStatus compares the given CombinedStatus object with the
-// one associated with the given binding name and workload object identifier.
-// True is returned in case of a match, false otherwise.
-func (c *combinedStatusResolver) CompareCombinedStatus(bindingName string,
-	objectIdentifier util.ObjectIdentifier, combinedStatus *v1alpha1.CombinedStatus) bool {
-	c.RLock()
-	defer c.RUnlock()
-
-	if resolutions, exists := c.bindingNameToResolutions[bindingName]; exists {
-		if resolution, exists := resolutions[objectIdentifier]; exists {
-			return resolution.compareCombinedStatus(combinedStatus)
-		}
-	}
-
-	return false
 }
 
 // NoteBindingResolution notes a binding resolution for status collection.
