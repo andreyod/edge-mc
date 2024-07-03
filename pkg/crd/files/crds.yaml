@@ -562,11 +562,7 @@ spec:
                           description: Value holds a JSON value. This is a union type.
                           properties:
                             array:
-                              description: RawMessage is a raw encoded JSON value.
-                                It implements Marshaler and Unmarshaler and can be
-                                used to delay JSON decoding or precompute a JSON encoding.
-                              format: byte
-                              type: string
+                              x-kubernetes-preserve-unknown-fields: true
                             bool:
                               type: boolean
                             float:
@@ -574,11 +570,7 @@ spec:
                                 Object Notation.
                               type: string
                             object:
-                              description: RawMessage is a raw encoded JSON value.
-                                It implements Marshaler and Unmarshaler and can be
-                                used to delay JSON decoding or precompute a JSON encoding.
-                              format: byte
-                              type: string
+                              x-kubernetes-preserve-unknown-fields: true
                             string:
                               type: string
                             type:

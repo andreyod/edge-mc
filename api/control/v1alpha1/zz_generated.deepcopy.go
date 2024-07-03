@@ -21,7 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"encoding/json"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -834,13 +834,13 @@ func (in *Value) DeepCopyInto(out *Value) {
 	}
 	if in.Object != nil {
 		in, out := &in.Object, &out.Object
-		*out = make(json.RawMessage, len(*in))
-		copy(*out, *in)
+		*out = new(apiextensionsv1.JSON)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.Array != nil {
 		in, out := &in.Array, &out.Array
-		*out = make(json.RawMessage, len(*in))
-		copy(*out, *in)
+		*out = new(apiextensionsv1.JSON)
+		(*in).DeepCopyInto(*out)
 	}
 }
 

@@ -17,8 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"encoding/json"
-
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -504,10 +503,10 @@ type Value struct {
 	Bool *bool `json:"bool,omitempty"`
 
 	// +optional
-	Object json.RawMessage `json:"object,omitempty"`
+	Object *v1.JSON `json:"object,omitempty"`
 
 	// +optional
-	Array json.RawMessage `json:"array,omitempty"`
+	Array *v1.JSON `json:"array,omitempty"`
 }
 
 type ValueType string

@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/cel-go/common/types/ref"
 
+	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime2 "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -263,85 +264,7 @@ func (c *combinedStatusResolution) generateCombinedStatus(bindingName string,
 	for scName, scData := range c.statusCollectorNameToData {
 		// the data has either select or combinedFields (with groupBy)
 		if len(scData.Select) > 0 {
-			namedStatusCombination := v1alpha1.NamedStatusCombination{
-				Name:        scName,
-				ColumnNames: make([]string, 0, len(scData.Select)+1), // for now, manually add wecName to all rows
-				Rows:        make([]v1alpha1.StatusCombinationRow, 0, len(scData.wecToData)),
-			}
-
-			// add column names
-			namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, "wecName")
-			for _, selectNamedExp := range scData.Select {
-				namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, selectNamedExp.Name)
-			}
-
-			// add rows for each workstatus
-			for wecName, wsData := range scData.wecToData {
-				row := v1alpha1.StatusCombinationRow{
-					Columns: make([]v1alpha1.Value, 0, len(scData.Select)+1),
-				}
-
-				wecNameStr := wecName
-				row.Columns = append(row.Columns, v1alpha1.Value{
-					Type:   v1alpha1.TypeString,
-					String: &wecNameStr})
-
-				for _, selectNamedExp := range scData.Select {
-					eval := wsData.selectEval[selectNamedExp.Name]
-					if eval == nil {
-						row.Columns = append(row.Columns, v1alpha1.Value{
-							Type: v1alpha1.TypeNull})
-						continue
-					}
-
-					evalValue := eval.Value()
-					var col v1alpha1.Value
-					// temporary until type checking is implemented
-					switch v := evalValue.(type) {
-					case string:
-						col = v1alpha1.Value{
-							Type:   v1alpha1.TypeString,
-							String: &v,
-						}
-					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-						numStr := fmt.Sprintf("%d", v)
-						col = v1alpha1.Value{
-							Type:   v1alpha1.TypeNumber,
-							Number: &numStr,
-						}
-					case float32, float64:
-						numStr := fmt.Sprintf("%f", v)
-						col = v1alpha1.Value{
-							Type:   v1alpha1.TypeNumber,
-							Number: &numStr,
-						}
-					case bool:
-						col = v1alpha1.Value{
-							Type: v1alpha1.TypeBool,
-							Bool: &v,
-						}
-					default:
-						evalJSON, err := json.Marshal(evalValue)
-						if err != nil {
-							runtime2.HandleError(fmt.Errorf("failed to marshal select evaluation: %w", err))
-							col = v1alpha1.Value{
-								Type: v1alpha1.TypeNull,
-							}
-						} else {
-							col = v1alpha1.Value{
-								Type:   v1alpha1.TypeObject,
-								Object: json.RawMessage(evalJSON),
-							}
-						}
-					}
-
-					row.Columns = append(row.Columns, col)
-				}
-
-				namedStatusCombination.Rows = append(namedStatusCombination.Rows, row)
-			}
-
-			combinedStatus.Results = append(combinedStatus.Results, namedStatusCombination)
+			combinedStatus.Results = append(combinedStatus.Results, *handleSelect(scName, scData))
 			continue
 		}
 
@@ -505,4 +428,86 @@ func addLabelsToCombinedStatus(combinedStatus *v1alpha1.CombinedStatus,
 	combinedStatus.Labels["status.kubestellar.io/binding-policy"] = bindingName // identical to binding-policy name
 
 	return combinedStatus
+}
+
+func handleSelect(scName string, scData *statusCollectorData) *v1alpha1.NamedStatusCombination {
+	namedStatusCombination := v1alpha1.NamedStatusCombination{
+		Name:        scName,
+		ColumnNames: make([]string, 0, len(scData.Select)+1), // for now, manually add wecName to all rows
+		Rows:        make([]v1alpha1.StatusCombinationRow, 0, len(scData.wecToData)),
+	}
+
+	// add column names
+	namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, "wecName")
+	for _, selectNamedExp := range scData.Select {
+		namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, selectNamedExp.Name)
+	}
+
+	// add rows for each workstatus
+	for wecName, wsData := range scData.wecToData {
+		row := v1alpha1.StatusCombinationRow{
+			Columns: make([]v1alpha1.Value, 0, len(scData.Select)+1),
+		}
+
+		wecNameStr := wecName
+		row.Columns = append(row.Columns, v1alpha1.Value{
+			Type:   v1alpha1.TypeString,
+			String: &wecNameStr})
+
+		for _, selectNamedExp := range scData.Select {
+			eval := wsData.selectEval[selectNamedExp.Name]
+			if eval == nil {
+				row.Columns = append(row.Columns, v1alpha1.Value{
+					Type: v1alpha1.TypeNull})
+				continue
+			}
+
+			evalValue := eval.Value()
+			var col v1alpha1.Value
+			// temporary until type checking is implemented
+			switch v := evalValue.(type) {
+			case string:
+				col = v1alpha1.Value{
+					Type:   v1alpha1.TypeString,
+					String: &v,
+				}
+			case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+				numStr := fmt.Sprintf("%d", v)
+				col = v1alpha1.Value{
+					Type:   v1alpha1.TypeNumber,
+					Number: &numStr,
+				}
+			case float32, float64:
+				numStr := fmt.Sprintf("%f", v)
+				col = v1alpha1.Value{
+					Type:   v1alpha1.TypeNumber,
+					Number: &numStr,
+				}
+			case bool:
+				col = v1alpha1.Value{
+					Type: v1alpha1.TypeBool,
+					Bool: &v,
+				}
+			default:
+				evalJSON, err := json.Marshal(evalValue)
+				if err != nil {
+					runtime2.HandleError(fmt.Errorf("failed to marshal select evaluation: %w", err))
+					col = v1alpha1.Value{
+						Type: v1alpha1.TypeNull,
+					}
+				} else {
+					col = v1alpha1.Value{
+						Type:   v1alpha1.TypeObject,
+						Object: &extv1.JSON{Raw: evalJSON},
+					}
+				}
+			}
+
+			row.Columns = append(row.Columns, col)
+		}
+
+		namedStatusCombination.Rows = append(namedStatusCombination.Rows, row)
+	}
+
+	return &namedStatusCombination
 }
