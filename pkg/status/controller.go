@@ -49,7 +49,7 @@ import (
 const (
 	controllerName      = "Status"
 	defaultResyncPeriod = time.Duration(0)
-	queueingDelay       = 2 * time.Second
+	queueingDelay       = 5 * time.Second
 	originWdsLabelKey   = "transport.kubestellar.io/originWdsName"
 )
 

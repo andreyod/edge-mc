@@ -19,6 +19,8 @@ package status
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"sync"
 
 	"github.com/google/cel-go/common/types/ref"
@@ -29,10 +31,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubestellar/kubestellar/api/control/v1alpha1"
+	"github.com/kubestellar/kubestellar/pkg/abstract"
 	"github.com/kubestellar/kubestellar/pkg/util"
 )
 
-const nilValue = "nil"
+const (
+	nilValue = "nil"
+	allValue = "all"
+)
 
 // combinedStatusResolution is a struct that represents the resolution of a
 // combinedstatus. A combinedstatus resolution is associated with a (binding,
@@ -268,7 +274,7 @@ func (c *combinedStatusResolution) generateCombinedStatus(bindingName string,
 			continue
 		}
 
-		// aggregation, TODO
+		combinedStatus.Results = append(combinedStatus.Results, *handleCombinedFields(scName, scData))
 	}
 
 	return addLabelsToCombinedStatus(combinedStatus, bindingName, workloadObjectIdentifier)
@@ -300,8 +306,8 @@ func (c *combinedStatusResolution) evaluateWorkStatus(celEvaluator *celEvaluator
 		changed, err := evaluateWorkStatusAgainstStatusCollectorWriteLocked(celEvaluator, workStatusWECName,
 			workStatusContent, scData)
 		if err != nil {
-			runtime2.HandleError(fmt.Errorf("failed to evaluate workstatus against statuscollector (%s): %w",
-				statusCollectorName, err))
+			runtime2.HandleError(fmt.Errorf("failed to evaluate workstatus (%s) against statuscollector (%s): %w",
+				workStatusWECName, statusCollectorName, err))
 			continue
 		}
 
@@ -439,9 +445,10 @@ func handleSelect(scName string, scData *statusCollectorData) *v1alpha1.NamedSta
 
 	// add column names
 	namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, "wecName")
-	for _, selectNamedExp := range scData.Select {
-		namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames, selectNamedExp.Name)
-	}
+	namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames,
+		abstract.SliceMap(scData.Select, func(selectNamedExp v1alpha1.NamedExpression) string {
+			return selectNamedExp.Name
+		})...)
 
 	// add rows for each workstatus
 	for wecName, wsData := range scData.wecToData {
@@ -510,4 +517,171 @@ func handleSelect(scName string, scData *statusCollectorData) *v1alpha1.NamedSta
 	}
 
 	return &namedStatusCombination
+}
+
+func handleCombinedFields(scName string, scData *statusCollectorData) *v1alpha1.NamedStatusCombination {
+	groupByNameToValueToWorkStatus := map[string]map[any][]*workStatusData{}
+	// fill the outer layer
+	if len(scData.GroupBy) > 0 {
+		for _, groupByNamedExp := range scData.GroupBy {
+			groupByNameToValueToWorkStatus[groupByNamedExp.Name] = make(map[any][]*workStatusData)
+		}
+	} else {
+		// if there is no groupBy, create a single group
+		groupByNameToValueToWorkStatus[allValue] = make(map[any][]*workStatusData)
+	}
+
+	// fill the inner layer
+	for _, wsData := range scData.wecToData {
+		for _, groupByNamedExp := range scData.GroupBy {
+			groupByValue := wsData.groupByEval[groupByNamedExp.Name]
+			if groupByValue == nil {
+				continue
+			}
+
+			groupByNameToValueToWorkStatus[groupByNamedExp.Name][groupByValue.Value()] =
+				append(groupByNameToValueToWorkStatus[groupByNamedExp.Name][groupByValue.Value()], wsData)
+		}
+	}
+
+	namedStatusCombination := v1alpha1.NamedStatusCombination{
+		Name:        scName,
+		ColumnNames: make([]string, 0, len(scData.CombinedFields)),
+		Rows:        []v1alpha1.StatusCombinationRow{},
+	}
+
+	// add column names
+	namedStatusCombination.ColumnNames = append(namedStatusCombination.ColumnNames,
+		abstract.SliceMap(scData.CombinedFields, func(combinedFieldNamedAgg v1alpha1.NamedAggregator) string {
+			return combinedFieldNamedAgg.Name
+		})...)
+
+	// handle combinedFields (named aggregators) per group
+	for groupByExpName, valueToWorkStatus := range groupByNameToValueToWorkStatus {
+		// one named-row per "groupExpName"."value" which columns are the combinedField aggregations.
+		for value, wsDataGroup := range valueToWorkStatus {
+			row := v1alpha1.StatusCombinationRow{
+				Name:    fmt.Sprintf("%s.%v", groupByExpName, value),
+				Columns: make([]v1alpha1.Value, 0, len(scData.CombinedFields)),
+			}
+
+			// add combinedFields
+			for _, combinedFieldNamedAgg := range scData.CombinedFields {
+				aggregation := calculateCombinedFieldAggregation(combinedFieldNamedAgg, wsDataGroup)
+				row.Columns = append(row.Columns, aggregation)
+			}
+
+			namedStatusCombination.Rows = append(namedStatusCombination.Rows, row)
+		}
+	}
+
+	return &namedStatusCombination
+}
+
+func calculateCombinedFieldAggregation(combinedFieldNamedAgg v1alpha1.NamedAggregator,
+	wsDataGroup []*workStatusData) v1alpha1.Value {
+	var numStr string
+
+	switch combinedFieldNamedAgg.Type {
+	case v1alpha1.AggregatorTypeCount:
+		numStr = fmt.Sprintf("%d", len(wsDataGroup))
+	case v1alpha1.AggregatorTypeSum:
+		sum := 0.0
+		for _, wsData := range wsDataGroup {
+			subject := getCombinedFieldSubject(combinedFieldNamedAgg, wsData)
+			if subject == nil {
+				continue
+			}
+
+			sum += *subject
+		}
+		numStr = fmt.Sprintf("%f", sum)
+	case v1alpha1.AggregatorTypeAvg:
+		sum := 0.0
+		for _, wsData := range wsDataGroup {
+			subject := getCombinedFieldSubject(combinedFieldNamedAgg, wsData)
+			if subject == nil {
+				continue
+			}
+
+			sum += *subject
+		}
+		numStr = fmt.Sprintf("%f", sum/float64(len(wsDataGroup)))
+	case v1alpha1.AggregatorTypeMin:
+		min := math.Inf(1)
+		for _, wsData := range wsDataGroup {
+			subject := getCombinedFieldSubject(combinedFieldNamedAgg, wsData)
+			if subject == nil {
+				continue
+			}
+
+			if *subject < min {
+				min = *subject
+			}
+		}
+		numStr = fmt.Sprintf("%f", min)
+	case v1alpha1.AggregatorTypeMax:
+		max := math.Inf(-1)
+		for _, wsData := range wsDataGroup {
+			subject := getCombinedFieldSubject(combinedFieldNamedAgg, wsData)
+			if subject == nil {
+				continue
+			}
+
+			if *subject > max {
+				max = *subject
+			}
+		}
+		numStr = fmt.Sprintf("%f", max)
+	default:
+		return v1alpha1.Value{
+			Type: v1alpha1.TypeNull,
+		}
+	}
+
+	return v1alpha1.Value{
+		Type:   v1alpha1.TypeNumber,
+		Number: &numStr,
+	}
+}
+
+// getCombinedFieldSubject returns the subject of the combinedField evaluation.
+// If the subject does not conform to the expected type, the function logs an
+// error and returns nil. TODO: handle errors
+func getCombinedFieldSubject(combinedFieldNamedAgg v1alpha1.NamedAggregator, wsData *workStatusData) *float64 {
+	// NamedAggregator pairs a name with a way to aggregate over some objects.
+	//
+	// - For `type=="COUNT"`, `subject` is omitted and the aggregate is the count
+	// of those objects that are not `null`.
+	//
+	// - For the other types, `subject` is required and SHOULD
+	// evaluate to a numeric value; exceptions are handled as follows.
+	// For a string value: if it parses as an int64 or float64 then that is used.
+	// Otherwise this is an error condition: a value of 0 is used, and the error
+	// is reported in the BindingPolicyStatus.Errors (not necessarily repeated for each WEC).
+	eval := wsData.combinedFieldsEval[combinedFieldNamedAgg.Name]
+	if eval == nil {
+		return nil
+	}
+
+	evalValue := eval.Value()
+	switch v := evalValue.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		f := float64(v.(int64))
+		return &f
+	case float32, float64:
+		f := v.(float64)
+		return &f
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			runtime2.HandleError(fmt.Errorf("failed to parse combinedField subject as a float: %w", err))
+			return nil
+		}
+
+		return &f
+	default:
+		runtime2.HandleError(fmt.Errorf("combinedField subject is not a numeric value"))
+		return nil
+	}
 }

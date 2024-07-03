@@ -19,6 +19,7 @@ package status
 import (
 	"context"
 	"fmt"
+	runtime2 "k8s.io/apimachinery/pkg/util/runtime"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,8 +36,10 @@ func (c *Controller) syncCombinedStatus(ctx context.Context, ref string) error {
 	if err != nil {
 		return err
 	}
+	logger.Info("Syncing CombinedStatus", "ns", ns, "name", name)
 
-	bindingName, sourceObjectIdentifier, exists := c.combinedStatusResolver.ResolutionExists(ref)
+	bindingName, sourceObjectIdentifier, exists := c.combinedStatusResolver.ResolutionExists(name) // name is unique
+	logger.Info("ResolutionExists", "bindingName", bindingName, "sourceObjectIdentifier", sourceObjectIdentifier, "exists", exists)
 	if !exists {
 		// if a resolution is not associated to the combined status, then it must be deleted
 		return c.deleteCombinedStatus(ctx, ns, name)
@@ -67,7 +70,7 @@ func (c *Controller) syncCombinedStatus(ctx context.Context, ref string) error {
 	// update combined status
 	generatedCombinedStatus := c.combinedStatusResolver.GenerateCombinedStatus(*bindingName, *sourceObjectIdentifier)
 	if generatedCombinedStatus == nil {
-		return fmt.Errorf("syncing CombinedStatus was stopped because it has no counterpart resolution")
+		return c.deleteCombinedStatus(ctx, ns, name)
 	}
 
 	if err = c.updateOrCreateCombinedStatus(ctx, combinedStatus, generatedCombinedStatus); err != nil {
@@ -94,15 +97,15 @@ func (c *Controller) updateOrCreateCombinedStatus(ctx context.Context, combinedS
 			csEcho, err = c.wdsKsClient.ControlV1alpha1().CombinedStatuses(combinedStatus.Namespace).Create(ctx,
 				combinedStatus, metav1.CreateOptions{FieldManager: controllerName})
 			if err != nil {
-				return fmt.Errorf("failed to create CombinedStatus (ns, name = %v, %v): %w",
-					combinedStatus.Namespace, combinedStatus.Name, err)
+				runtime2.HandleError(fmt.Errorf("failed to create CombinedStatus (ns, name = %v, %v): %w",
+					combinedStatus.Namespace, combinedStatus.Name, err))
+				return nil
 			}
 
 			logger.Info("Created CombinedStatus", "ns", combinedStatus.Namespace,
 				"name", combinedStatus.Name, "resourceVersion", csEcho.ResourceVersion)
 			return nil
 		} else {
-
 			return fmt.Errorf("failed to update CombinedStatus (ns, name = %v, %v): %w",
 				combinedStatus.Namespace, combinedStatus.Name, err)
 		}
