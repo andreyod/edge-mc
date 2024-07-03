@@ -486,7 +486,8 @@ func statusCollectorSpecsMatch(spec1, spec2 *v1alpha1.StatusCollectorSpec) bool 
 		return false
 	}
 
-	if spec1.Filter != spec2.Filter {
+	// compare string pointers
+	if !expressionPtrsEqual(spec1.Filter, spec2.Filter) {
 		return false
 	}
 
@@ -517,7 +518,7 @@ func statusCollectorSpecsMatch(spec1, spec2 *v1alpha1.StatusCollectorSpec) bool 
 		func(na v1alpha1.NamedAggregator) v1alpha1.NamedAggregator { return na })
 	for _, na := range spec2.CombinedFields {
 		if aggregator, ok := combinedFieldsMap[na.Name]; !ok ||
-			aggregator.Type != na.Type || aggregator.Subject != na.Subject {
+			aggregator.Type != na.Type || !expressionPtrsEqual(aggregator.Subject, na.Subject) {
 			return false
 		}
 	}
@@ -549,4 +550,8 @@ func namedExpressionSliceToMap(slice []v1alpha1.NamedExpression) map[string]v1al
 	}
 
 	return result
+}
+
+func expressionPtrsEqual(e1, e2 *v1alpha1.Expression) bool {
+	return e1 == nil && e2 == nil || e1 != nil && e2 != nil && *e1 == *e2
 }

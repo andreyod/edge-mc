@@ -179,8 +179,9 @@ func (c *combinedStatusResolution) setStatusCollectors(statusCollectorNameToSpec
 	// add new statuscollector data
 	for statusCollectorName, statusCollectorSpec := range statusCollectorNameToSpec {
 		if _, ok := c.statusCollectorNameToData[statusCollectorName]; !ok {
+			statusCollectorSpecVar := statusCollectorSpec // copy to avoid closure over the loop variable
 			c.statusCollectorNameToData[statusCollectorName] = &statusCollectorData{
-				StatusCollectorSpec: &statusCollectorSpec,
+				StatusCollectorSpec: &statusCollectorSpecVar,
 				wecToData:           make(map[string]*workStatusData),
 			}
 
