@@ -113,7 +113,11 @@ func (c *Controller) syncSingletonWorkStatus(ctx context.Context, ref singletonW
 	}
 
 	logger.Info("Updating singleton status", "objectIdentifier", ref.sourceObjectIdentifier)
-	return updateObjectStatus(ctx, &ref.sourceObjectIdentifier, status, c.listers, c.wdsDynClient)
+	if err = updateObjectStatus(ctx, &ref.sourceObjectIdentifier, status, c.listers, c.wdsDynClient); err != nil {
+		return err
+	}
+
+	return c.syncWorkStatus(ctx, workStatusRef(ref))
 }
 
 func updateObjectStatus(ctx context.Context, objectIdentifier *util.ObjectIdentifier, status map[string]interface{},
