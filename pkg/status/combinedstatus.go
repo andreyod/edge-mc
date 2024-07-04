@@ -39,7 +39,6 @@ func (c *Controller) syncCombinedStatus(ctx context.Context, ref string) error {
 	logger.Info("Syncing CombinedStatus", "ns", ns, "name", name)
 
 	bindingName, sourceObjectIdentifier, exists := c.combinedStatusResolver.ResolutionExists(name) // name is unique
-	logger.Info("ResolutionExists", "bindingName", bindingName, "sourceObjectIdentifier", sourceObjectIdentifier, "exists", exists)
 	if !exists {
 		// if a resolution is not associated to the combined status, then it must be deleted
 		return c.deleteCombinedStatus(ctx, ns, name)
@@ -116,7 +115,12 @@ func (c *Controller) deleteCombinedStatus(ctx context.Context, ns, name string) 
 	logger := klog.FromContext(ctx)
 
 	err := c.wdsKsClient.ControlV1alpha1().CombinedStatuses(ns).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil && !errors.IsNotFound(err) {
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("CombinedStatus not found (deletion skipped)", "ns", ns, "name", name)
+			return nil
+		}
+
 		return fmt.Errorf("failed to delete CombinedStatus (ns, name = %v, %v): %w", ns, name, err)
 	}
 

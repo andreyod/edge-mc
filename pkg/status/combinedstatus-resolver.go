@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sync"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	runtime2 "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -202,8 +203,7 @@ func (c *combinedStatusResolver) NoteBindingResolution(bindingName string, bindi
 	// associated with the binding resolution
 	for objectIdentifier, resolution := range objectIdentifierToResolution {
 		if _, exists := bindingResolution.ObjectIdentifierToData[objectIdentifier]; !exists {
-			combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(resolution.getName(),
-				objectIdentifier.ObjectName.Namespace))
+			combinedStatusIdentifiersToQueue.Insert(resolution.identifier())
 			delete(objectIdentifierToResolution, objectIdentifier)
 			delete(c.resolutionNameToKey, resolution.getName())
 		}
@@ -212,11 +212,16 @@ func (c *combinedStatusResolver) NoteBindingResolution(bindingName string, bindi
 	// (~2+3) create/update combinedstatus resolutions for every object that requires status collection,
 	// and delete resolutions that are no longer required
 	for objectIdentifier, objectData := range bindingResolution.ObjectIdentifierToData {
+		// namespace-scoped only for now - a resource cannot be both namespace and cluster scoped
+		// therefore combinedstatus objects are only namespace-scoped
+		if objectIdentifier.ObjectName.Namespace == v1.NamespaceNone {
+			continue
+		}
+
 		csResolution, exists := objectIdentifierToResolution[objectIdentifier]
 		if len(objectData.StatusCollectors) == 0 {
 			if exists { // associated resolution is no longer required
-				combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(csResolution.getName(),
-					objectIdentifier.ObjectName.Namespace))
+				combinedStatusIdentifiersToQueue.Insert(csResolution.identifier())
 
 				delete(objectIdentifierToResolution, objectIdentifier)
 				delete(c.resolutionNameToKey, csResolution.getName())
@@ -229,6 +234,7 @@ func (c *combinedStatusResolver) NoteBindingResolution(bindingName string, bindi
 		if !exists {
 			csResolution = &combinedStatusResolution{
 				name:                      getCombinedStatusName(bindingResolution.UID, objectData.UID),
+				ns:                        objectIdentifier.ObjectName.Namespace,
 				statusCollectorNameToData: make(map[string]*statusCollectorData),
 			}
 			objectIdentifierToResolution[objectIdentifier] = csResolution
@@ -246,8 +252,7 @@ func (c *combinedStatusResolver) NoteBindingResolution(bindingName string, bindi
 
 		// should queue the combinedstatus object for syncing if lost collectors / destinations
 		if removedCollectors || removedDestinations {
-			combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(csResolution.getName(),
-				objectIdentifier.ObjectName.Namespace))
+			combinedStatusIdentifiersToQueue.Insert(csResolution.identifier())
 		}
 
 		// should evaluate workstatuses if added/updated collectors or added destinations
@@ -273,9 +278,8 @@ func (c *combinedStatusResolver) deleteResolutionsForBindingWriteLocked(bindingN
 		return combinedStatusIdentifiersToQueue
 	}
 
-	for objectIdentifier, resolution := range resolutions {
-		combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(resolution.getName(),
-			objectIdentifier.ObjectName.Namespace))
+	for _, resolution := range resolutions {
+		combinedStatusIdentifiersToQueue.Insert(resolution.identifier())
 		delete(c.resolutionNameToKey, resolution.getName())
 	}
 
@@ -308,8 +312,7 @@ func (c *combinedStatusResolver) NoteWorkStatus(workStatus *workStatus) sets.Set
 
 		// this call logs errors, but does not return them for now
 		if resolution.evaluateWorkStatus(c.celEvaluator, workStatus.wecName, workStatus.status) {
-			combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(resolution.getName(),
-				workStatus.sourceObjectIdentifier.ObjectName.Namespace))
+			combinedStatusIdentifiersToQueue.Insert(resolution.identifier())
 		}
 	}
 
@@ -346,8 +349,7 @@ func (c *combinedStatusResolver) NoteStatusCollector(statusCollector *v1alpha1.S
 		for workloadObjectIdentifier, resolution := range resolutions {
 			if deleted {
 				if resolution.removeStatusCollector(statusCollector.Name) {
-					combinedStatusIdentifiersToQueue.Insert(util.IdentifierForCombinedStatus(resolution.getName(),
-						workloadObjectIdentifier.ObjectName.Namespace))
+					combinedStatusIdentifiersToQueue.Insert(resolution.identifier())
 				}
 
 				continue
@@ -452,8 +454,7 @@ func (c *combinedStatusResolver) evaluateWorkStatusesPerBindingReadLocked(bindin
 			// evaluate workstatus
 			csResolution := c.bindingNameToResolutions[bindingName][workStatus.sourceObjectIdentifier]
 			if csResolution.evaluateWorkStatus(c.celEvaluator, workStatus.wecName, workStatus.status) {
-				combinedStatusesToQueue.Insert(util.IdentifierForCombinedStatus(csResolution.getName(),
-					workloadObjIdentifier.ObjectName.Namespace))
+				combinedStatusesToQueue.Insert(csResolution.identifier())
 			}
 		}
 	}

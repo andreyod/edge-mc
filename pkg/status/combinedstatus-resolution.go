@@ -36,10 +36,7 @@ import (
 	"github.com/kubestellar/kubestellar/pkg/util"
 )
 
-const (
-	nilValue = "nil"
-	allValue = "all"
-)
+const allValue = "all"
 
 // combinedStatusResolution is a struct that represents the resolution of a
 // combinedstatus. A combinedstatus resolution is associated with a (binding,
@@ -111,6 +108,13 @@ func (c *combinedStatusResolution) getName() string {
 	defer c.RUnlock()
 
 	return c.name
+}
+
+func (c *combinedStatusResolution) identifier() util.ObjectIdentifier {
+	c.RLock()
+	defer c.RUnlock()
+
+	return util.IdentifierForCombinedStatus(c.name, c.ns)
 }
 
 // setCollectionDestinations sets the collection destinations of the
