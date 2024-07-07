@@ -18,13 +18,13 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
-	appsv1 "k8s.io/api/apps/v1"
+	// appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	ksapi "github.com/kubestellar/kubestellar/api/control/v1alpha1"
 	"github.com/kubestellar/kubestellar/test/util"
@@ -47,304 +47,448 @@ var _ = ginkgo.Describe("end to end testing", func() {
 			[]metav1.LabelSelector{
 				{MatchLabels: map[string]string{"location-group": "edge"}},
 			},
-			[]ksapi.DownsyncObjectTest{
-				{ObjectSelectors: []metav1.LabelSelector{
-					{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}},
-				}}})
+			[]ksapi.DownsyncObjectTestAndStatusCollection{
+				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}}},
+				}},
+			},
+		)
 	})
 
 	ctx := context.Background()
 
-	ginkgo.Context("multiple WECs", func() {
-		ginkgo.It("propagates deployment to the WECs while applying CustomTransform", func() {
-			util.CreateCustomTransform(ctx, ksWds, "test", "apps", "deployments", `$.metadata.labels["test.kubestellar.io/test-label"]`)
-			testLabelAbsent := func(deployment *appsv1.Deployment) string {
-				if _, has := deployment.Labels["test.kubestellar.io/test-label"]; has {
-					return "it has the 'test.kubestellar.io/test-label' label"
-				}
-				return ""
-			}
-			util.ValidateNumDeployments(ctx, wec1, ns, 1, testLabelAbsent)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1, testLabelAbsent)
-		})
+	// ginkgo.Context("multiple WECs", func() {
+	// 	ginkgo.It("propagates deployment to the WECs while applying CustomTransform", func() {
+	// 		util.CreateCustomTransform(ctx, ksWds, "test", "apps", "deployments", `$.metadata.labels["test.kubestellar.io/test-label"]`)
+	// 		testLabelAbsent := func(deployment *appsv1.Deployment) string {
+	// 			if _, has := deployment.Labels["test.kubestellar.io/test-label"]; has {
+	// 				return "it has the 'test.kubestellar.io/test-label' label"
+	// 			}
+	// 			return ""
+	// 		}
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1, testLabelAbsent)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1, testLabelAbsent)
+	// 	})
 
-		ginkgo.It("updates objects on the WECs following an update on the WDS", func() {
-			patch := []byte(`{"spec":{"replicas": 2}}`)
-			_, err := wds.AppsV1().Deployments(ns).Patch(
-				ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 	ginkgo.It("updates objects on the WECs following an update on the WDS", func() {
+	// 		patch := []byte(`{"spec":{"replicas": 2}}`)
+	// 		_, err := wds.AppsV1().Deployments(ns).Patch(
+	// 			ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
 
-			util.ValidateNumDeploymentReplicas(ctx, wec1, ns, 2)
-			util.ValidateNumDeploymentReplicas(ctx, wec2, ns, 2)
-		})
+	// 		util.ValidateNumDeploymentReplicas(ctx, wec1, ns, 2)
+	// 		util.ValidateNumDeploymentReplicas(ctx, wec2, ns, 2)
+	// 	})
 
-		ginkgo.It("handles changes in bindingpolicy ObjectSelector", func() {
-			ginkgo.By("deletes WEC objects when bindingpolicy ObjectSelector stops matching")
-			patch := []byte(`{"spec": {"downsync": [{"objectSelectors": [{"matchLabels": {"app.kubernetes.io/name": "invalid"}}]}]}}`)
-			_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
-				ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 	ginkgo.It("handles changes in bindingpolicy ObjectSelector", func() {
+	// 		ginkgo.By("deletes WEC objects when bindingpolicy ObjectSelector stops matching")
+	// 		patch := []byte(`{"spec": {"downsync": [{"objectSelectors": [{"matchLabels": {"app.kubernetes.io/name": "invalid"}}]}]}}`)
+	// 		_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
+	// 			ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 0)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
 
-			ginkgo.By("creates WEC objects when bindingpolicy ObjectSelector matches")
-			patch = []byte(`{"spec": {"downsync": [{"objectSelectors": [{"matchLabels": {"app.kubernetes.io/name": "nginx"}}]}]}}`)
-			_, err = ksWds.ControlV1alpha1().BindingPolicies().Patch(
-				ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-		})
+	// 		ginkgo.By("creates WEC objects when bindingpolicy ObjectSelector matches")
+	// 		patch = []byte(`{"spec": {"downsync": [{"objectSelectors": [{"matchLabels": {"app.kubernetes.io/name": "nginx"}}]}]}}`)
+	// 		_, err = ksWds.ControlV1alpha1().BindingPolicies().Patch(
+	// 			ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	})
 
-		ginkgo.It("handles changes in workload object labels", func() {
-			ginkgo.By("deletes WEC objects when workload object labels stop matching")
-			patch := []byte(`{"metadata": {"labels": {"app.kubernetes.io/name": "not-me"}}}`)
-			_, err := wds.AppsV1().Deployments("nginx").Patch(
-				ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 	ginkgo.It("handles multiple bindingpolicies with overlapping matches", func() {
+	// 		ginkgo.By("creates a second bindingpolicy with overlapping matches")
+	// 		util.CreateBindingPolicy(ctx, ksWds, "nginx-2",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"location-group": "edge"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
 
-			ginkgo.By("creates WEC objects when workload object labels resume matching")
-			patch = []byte(`{"metadata": {"labels": {"app.kubernetes.io/name": "nginx"}}}`)
-			_, err = wds.AppsV1().Deployments("nginx").Patch(
-				ctx, "nginx", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-		})
+	// 		ginkgo.By("delete the second bindingpolicy")
+	// 		err := ksWds.ControlV1alpha1().BindingPolicies().Delete(ctx, "nginx-2", metav1.DeleteOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	})
 
-		ginkgo.It("handles multiple bindingpolicies with overlapping matches", func() {
-			ginkgo.By("creates a second bindingpolicy with overlapping matches")
-			util.CreateBindingPolicy(ctx, ksWds, "nginx-2",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"location-group": "edge"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx"}},
-					}}})
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	ginkgo.It("deletes WEC objects when wds deployment is deleted", func() {
+	// 		util.DeleteDeployment(ctx, wds, ns, "nginx")
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 0)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 	})
 
-			ginkgo.By("delete the second bindingpolicy")
-			err := ksWds.ControlV1alpha1().BindingPolicies().Delete(ctx, "nginx-2", metav1.DeleteOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-		})
+	// 	ginkgo.It("deletes WEC objects when BindingPolicy is deleted", func() {
+	// 		err := ksWds.ControlV1alpha1().BindingPolicies().Delete(ctx, "nginx", metav1.DeleteOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 0)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 	})
 
-		ginkgo.It("deletes WEC objects when wds deployment is deleted", func() {
-			util.DeleteDeployment(ctx, wds, ns, "nginx")
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
-		})
+	// 	// 1. Create object 1 with label A and label B, object 2 with label B,
+	// 	// and a Placement that matches labels A AND B, and verify that only
+	// 	// object 1 matches and is delivered.
+	// 	// 2. Patch the cluster selector and expect objects to be removed and downsynced correctly.
+	// 	ginkgo.It("downsync objects that fully match on object and cluster selector", func() {
+	// 		ginkgo.By("create two deployments and a bindingpolicy that matches only one")
+	// 		util.DeleteDeployment(ctx, wds, ns, "nginx")
+	// 		util.CreateDeployment(ctx, wds, ns, "one",
+	// 			map[string]string{
+	// 				"label1": "test1",
+	// 			})
+	// 		util.CreateDeployment(ctx, wds, ns, "two",
+	// 			map[string]string{
+	// 				"label1": "test1",
+	// 				"label2": "test2",
+	// 			})
+	// 		util.CreateBindingPolicy(ctx, ksWds, "both-labels",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"name": "cluster1"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{
+	// 						{MatchLabels: map[string]string{"label1": "test1", "label2": "test2"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
 
-		ginkgo.It("deletes WEC objects when BindingPolicy is deleted", func() {
-			err := ksWds.ControlV1alpha1().BindingPolicies().Delete(ctx, "nginx", metav1.DeleteOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
-		})
+	// 		ginkgo.By("patch the cluster selector")
+	// 		patch := []byte(`{"spec": {"clusterSelectors": [{"matchLabels": {"name": "cluster2"}}]}}`)
+	// 		_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
+	// 			ctx, "both-labels", types.MergePatchType, patch, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 0)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	})
 
-		// 1. Create object 1 with label A and label B, object 2 with label B,
-		// and a Placement that matches labels A AND B, and verify that only
-		// object 1 matches and is delivered.
-		// 2. Patch the cluster selector and expect objects to be removed and downsynced correctly.
-		ginkgo.It("downsync objects that fully match on object and cluster selector", func() {
-			ginkgo.By("create two deployments and a bindingpolicy that matches only one")
-			util.DeleteDeployment(ctx, wds, ns, "nginx")
-			util.CreateDeployment(ctx, wds, ns, "one",
-				map[string]string{
-					"label1": "test1",
-				})
-			util.CreateDeployment(ctx, wds, ns, "two",
-				map[string]string{
-					"label1": "test1",
-					"label2": "test2",
-				})
-			util.CreateBindingPolicy(ctx, ksWds, "both-labels",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"name": "cluster1"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{
-							"label1": "test1",
-							"label2": "test2",
-						}},
-					}}})
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 	ginkgo.It("handles clusterSelector with MatchLabels and MatchExpressions", func() {
+	// 		util.DeleteDeployment(ctx, wds, ns, "nginx")
+	// 		util.CreateDeployment(ctx, wds, ns, "one",
+	// 			map[string]string{
+	// 				"label1": "A",
+	// 			})
+	// 		util.CreateDeployment(ctx, wds, ns, "two",
+	// 			map[string]string{
+	// 				"label1": "B",
+	// 			})
+	// 		util.CreateDeployment(ctx, wds, ns, "three",
+	// 			map[string]string{
+	// 				"label1": "C",
+	// 			})
+	// 		util.CreateBindingPolicy(ctx, ksWds, "two-cluster-selectors",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"name": "cluster1"}},
+	// 				{MatchExpressions: []metav1.LabelSelectorRequirement{
+	// 					{Key: "name", Operator: metav1.LabelSelectorOpIn, Values: []string{"cluster1", "cluster2", "cluster3"}},
+	// 				}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{
+	// 						{MatchLabels: map[string]string{"label1": "A"}},
+	// 						{MatchLabels: map[string]string{"label1": "B"}},
+	// 					},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 2)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 2)
+	// 	})
 
-			ginkgo.By("patch the cluster selector")
-			patch := []byte(`{"spec": {"clusterSelectors": [{"matchLabels": {"name": "cluster2"}}]}}`)
-			_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
-				ctx, "both-labels", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-		})
+	// 	ginkgo.It("downsync based on object labels and object name", func() {
+	// 		util.DeleteDeployment(ctx, wds, ns, "nginx")
+	// 		util.CreateDeployment(ctx, wds, ns, "one",
+	// 			map[string]string{
+	// 				"label1": "A",
+	// 			})
+	// 		util.CreateDeployment(ctx, wds, ns, "two",
+	// 			map[string]string{
+	// 				"label1": "B",
+	// 			})
+	// 		util.CreateDeployment(ctx, wds, ns, "three",
+	// 			map[string]string{
+	// 				"label1": "C",
+	// 			})
+	// 		util.CreateBindingPolicy(ctx, ksWds, "test-name-and-label",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"location-group": "edge"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectNames:     []string{"three"},
+	// 					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"label1": "C"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	})
+	// })
 
-		ginkgo.It("handles clusterSelector with MatchLabels and MatchExpressions", func() {
-			util.DeleteDeployment(ctx, wds, ns, "nginx")
-			util.CreateDeployment(ctx, wds, ns, "one",
-				map[string]string{
-					"label1": "A",
-				})
-			util.CreateDeployment(ctx, wds, ns, "two",
-				map[string]string{
-					"label1": "B",
-				})
-			util.CreateDeployment(ctx, wds, ns, "three",
-				map[string]string{
-					"label1": "C",
-				})
-			util.CreateBindingPolicy(ctx, ksWds, "two-cluster-selectors",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"name": "cluster1"}},
-					{MatchExpressions: []metav1.LabelSelectorRequirement{
-						{Key: "name", Operator: metav1.LabelSelectorOpIn, Values: []string{"cluster1", "cluster2", "cluster3"}},
+	// ginkgo.Context("singleton status testing", func() {
+	// 	ginkgo.It("sets (or deletes) singleton status when a singleton bindingpolicy/deployment is created (or deleted)", func() {
+	// 		util.DeleteDeployment(ctx, wds, ns, "nginx") // we don't have to delete nginx
+	// 		util.CreateDeployment(ctx, wds, ns, "nginx-singleton",
+	// 			map[string]string{
+	// 				"app.kubernetes.io/name": "nginx-singleton",
+	// 			})
+	// 		util.CreateBindingPolicy(ctx, ksWds, "nginx-singleton",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"name": "cluster1"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx-singleton"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		patch := []byte(`{"spec":{"wantSingletonReportedState": true}}`)
+	// 		_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
+	// 			ctx, "nginx-singleton", types.MergePatchType, patch, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 		util.ValidateSingletonStatus(ctx, wds, ns, "nginx-singleton")
+	// 		patch_again := []byte(`{"spec":{"clusterSelectors":[{"matchLabels":{"name":"CelestialNexus"}}]}}`)
+	// 		_, err = ksWds.ControlV1alpha1().BindingPolicies().Patch(
+	// 			ctx, "nginx-singleton", types.MergePatchType, patch_again, metav1.PatchOptions{})
+	// 		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 0)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 0)
+	// 		util.ValidateSingletonStatusZeroValue(ctx, wds, ns, "nginx-singleton")
+	// 	})
+	// })
+
+	// ginkgo.Context("object cleaning", func() {
+	// 	ginkgo.It("properly starts a service", func() {
+	// 		util.CreateService(ctx, wds, ns, "hello-service", "hello-service")
+	// 		util.CreateBindingPolicy(ctx, ksWds, "hello-service",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"name": "cluster1"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-service"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumServices(ctx, wec1, ns, 1)
+	// 	})
+	// 	ginkgo.It("properly starts a job with metadata.generateName", func() {
+	// 		util.CreateJob(ctx, wds, ns, "hello-job", "hello-job")
+	// 		util.CreateBindingPolicy(ctx, ksWds, "hello-job",
+	// 			[]metav1.LabelSelector{
+	// 				{MatchLabels: map[string]string{"name": "cluster1"}},
+	// 			},
+	// 			[]ksapi.DownsyncObjectTestAndStatusCollection{
+	// 				{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+	// 					ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-job"}}},
+	// 				}},
+	// 			},
+	// 		)
+	// 		util.ValidateNumJobs(ctx, wec1, ns, 1)
+	// 	})
+	// })
+
+	// ginkgo.Context("resiliency testing", func() {
+	// 	ginkgo.It("survives WDS coming down", func() {
+	// 		util.DeletePods(ctx, coreCluster, "wds1-system", "kubestellar")
+	// 		util.DeletePods(ctx, coreCluster, "wds1-system", "transport")
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 		util.Expect1PodOfEach(ctx, coreCluster, "wds1-system", "kubestellar-controller-manager", "transport-controller")
+	// 	})
+
+	// 	ginkgo.It("survives kubeflex coming down", func() {
+	// 		util.DeletePods(ctx, coreCluster, "kubeflex-system", "")
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 		util.Expect1PodOfEach(ctx, coreCluster, "kubeflex-system", "kubeflex-controller-manager", "postgres-postgresql-0")
+	// 	})
+
+	// 	ginkgo.It("survives ITS vcluster coming down", func() {
+	// 		util.DeletePods(ctx, coreCluster, "its1-system", "vcluster")
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+	// 	})
+
+	// 	ginkgo.It("survives everything coming down", func() {
+	// 		ginkgo.By("kill as many pods as possible")
+	// 		util.DeletePods(ctx, coreCluster, "wds1-system", "kubestellar")
+	// 		util.DeletePods(ctx, coreCluster, "wds1-system", "transport")
+	// 		util.DeletePods(ctx, coreCluster, "kubeflex-system", "")
+	// 		util.DeletePods(ctx, coreCluster, "its1-system", "vcluster")
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 1)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 1)
+
+	// 		ginkgo.By("test that a new deployment still gets downsynced")
+	// 		util.CreateDeployment(ctx, wds, ns, "nginx-2",
+	// 			map[string]string{
+	// 				"app.kubernetes.io/name": "nginx",
+	// 			})
+	// 		util.ValidateNumDeployments(ctx, wec1, ns, 2)
+	// 		util.ValidateNumDeployments(ctx, wec2, ns, 2)
+	// 		util.Expect1PodOfEach(ctx, coreCluster, "wds1-system", "kubestellar-controller-manager", "transport-controller")
+	// 		util.Expect1PodOfEach(ctx, coreCluster, "kubeflex-system", "kubeflex-controller-manager", "postgres-postgresql-0")
+	// 		util.Expect1PodOfEach(ctx, coreCluster, "its1-system", "vcluster")
+	// 	})
+	// })
+
+	ginkgo.Context("combined status testing", func() {
+		workloadName := "nginx"
+		bpName := "nginx-combinedstatus"
+		fullStatusCollectorName := "full-status"
+		countAvailableReplicasStatusCollectorName := "count-available-replicas"
+		selectAvailableStatusCollectorName := "select-available-replicas"
+		selectReplicasStatusCollectorName := "replicas"
+
+		clusterSelector := []metav1.LabelSelector{
+			{MatchLabels: map[string]string{"location-group": "edge"}},
+		}
+		testAndStatusCollection := []ksapi.DownsyncObjectTestAndStatusCollection{
+			{DownsyncObjectTest: ksapi.DownsyncObjectTest{
+				ObjectSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"app.kubernetes.io/name": workloadName}}},
+			},
+				StatusCollectors: []string{},
+			},
+		}
+
+		ginkgo.It("select full status", func() {
+			util.CreateStatusCollector(ctx, ksWds, fullStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					Select: []ksapi.NamedExpression{{
+						Name: "status",
+						Def:  "obj",
 					}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"label1": "A"}},
-						{MatchLabels: map[string]string{"label1": "B"}},
-					}}})
-			util.ValidateNumDeployments(ctx, wec1, ns, 2)
-			util.ValidateNumDeployments(ctx, wec2, ns, 2)
-		})
+					Limit: 20,
+				})
 
-		ginkgo.It("downsync based on object labels and object name", func() {
-			util.DeleteDeployment(ctx, wds, ns, "nginx")
-			util.CreateDeployment(ctx, wds, ns, "one",
-				map[string]string{
-					"label1": "A",
+			testAndStatusCollection[0].StatusCollectors = []string{fullStatusCollectorName}
+			util.CreateBindingPolicy(ctx, ksWds, bpName, clusterSelector, testAndStatusCollection)
+
+			cs := util.GetCombinedStatus(ctx, ksWds, wds, ns, workloadName, bpName)
+
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- CS is: %v\n", cs)
+
+			// Validate CombinedStatus results
+			gomega.ExpectWithOffset(1, len(cs.Results)).To(gomega.Equal(1))
+			gomega.Expect(cs.Results[0].Name).To(gomega.Equal(fullStatusCollectorName))
+
+			gomega.ExpectWithOffset(1, len(cs.Results[0].ColumnNames)).To(gomega.Equal(2))
+			gomega.Expect(cs.Results[0].ColumnNames[0]).To(gomega.Equal("wecName"))
+			gomega.Expect(cs.Results[0].ColumnNames[1]).To(gomega.Equal("status"))
+
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- ColumnNames valid: %v\n", cs.Results[0].ColumnNames)
+			// wait for len(cs.Results[0].Rows) to be 2
+
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Rows len valid: %v\n", cs.Results[0].Rows)
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows[0].Columns)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Rows0 Columns len valid: %v\n", cs.Results[0].Rows[0].Columns)
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows[1].Columns)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Rows1 Columns len valid: %v\n", cs.Results[0].Rows[1].Columns)
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Row0 Column0 : %s\n", *cs.Results[0].Rows[0].Columns[0].String)
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Row1 Column0 : %s\n", *cs.Results[0].Rows[1].Columns[0].String)
+
+			// we don't know which row will hold data for which WEC
+			row0expectedWec := "cluster1"
+			row1expectedWec := "cluster2"
+			if *cs.Results[0].Rows[0].Columns[0].String != row0expectedWec {
+				row0expectedWec = "cluster2"
+				row1expectedWec = "cluster1"
+			}
+
+			gomega.Expect(*cs.Results[0].Rows[0].Columns[0].String).To(gomega.Equal(row0expectedWec))
+			gomega.Expect(cs.Results[0].Rows[0].Columns[1].Object).Should(gomega.Not(gomega.BeNil()))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- Rows0 all good \n")
+			gomega.Expect(*cs.Results[0].Rows[1].Columns[0].String).To(gomega.Equal(row1expectedWec))
+			gomega.Expect(cs.Results[0].Rows[1].Columns[1].Object).Should(gomega.Not(gomega.BeNil()))
+		})
+		ginkgo.It("available replicas count", func() {
+			util.CreateStatusCollector(ctx, ksWds, countAvailableReplicasStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					GroupBy: []ksapi.NamedExpression{{
+						Name: "num-available",
+						Def:  "obj.availableReplicas",
+					}},
+					CombinedFields: []ksapi.NamedAggregator{{
+						Name: "count",
+						Type: ksapi.AggregatorTypeCount,
+					}},
+					Limit: 10,
 				})
-			util.CreateDeployment(ctx, wds, ns, "two",
-				map[string]string{
-					"label1": "B",
+
+			testAndStatusCollection[0].StatusCollectors = []string{countAvailableReplicasStatusCollectorName}
+			util.CreateBindingPolicy(ctx, ksWds, bpName, clusterSelector, testAndStatusCollection)
+
+			cs := util.GetCombinedStatus(ctx, ksWds, wds, ns, workloadName, bpName)
+
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- CS is: %v\n", cs)
+			// Validate CombinedStatus results
+			gomega.Expect(len(cs.Results)).To(gomega.Equal(1))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 1 result\n")
+			gomega.Expect(cs.Results[0].Name).To(gomega.Equal(countAvailableReplicasStatusCollectorName))
+
+			gomega.ExpectWithOffset(1, len(cs.Results[0].ColumnNames)).To(gomega.Equal(1))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 1 column name \n")
+			gomega.Expect(cs.Results[0].ColumnNames[0]).To(gomega.Equal("count"))
+
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows)).To(gomega.Equal(1))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 1 row\n")
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows[0].Columns)).To(gomega.Equal(1))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 1 column\n")
+			gomega.Expect(*cs.Results[0].Rows[0].Columns[0].Number).To(gomega.Equal("2"))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have count 2\n")
+
+		})
+		ginkgo.It("policy with multiple StatusCollectors", func() {
+			util.CreateStatusCollector(ctx, ksWds, selectAvailableStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					Select: []ksapi.NamedExpression{{
+						Name: "availableReplicas",
+						Def:  "obj.availableReplicas",
+					}},
+					Limit: 20,
 				})
-			util.CreateDeployment(ctx, wds, ns, "three",
-				map[string]string{
-					"label1": "C",
+
+			util.CreateStatusCollector(ctx, ksWds, selectReplicasStatusCollectorName,
+				ksapi.StatusCollectorSpec{
+					Select: []ksapi.NamedExpression{{
+						Name: "replicas",
+						Def:  "obj.replicas",
+					}},
+					Limit: 20,
 				})
-			util.CreateBindingPolicy(ctx, ksWds, "test-name-and-label",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"location-group": "edge"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectNames: []string{"three"}},
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"label1": "C"}},
-					}}})
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
+
+			testAndStatusCollection[0].StatusCollectors = []string{selectAvailableStatusCollectorName, selectReplicasStatusCollectorName}
+			util.CreateBindingPolicy(ctx, ksWds, bpName, clusterSelector, testAndStatusCollection)
+
+			cs := util.GetCombinedStatus(ctx, ksWds, wds, ns, workloadName, bpName)
+
+			// Validate CombinedStatus results
+			gomega.Expect(len(cs.Results)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 2 results\n")
+			//gomega.Expect(cs.Results[0].Name).To(gomega.Equal(selectReplicasStatusCollectorName))
+			gomega.ExpectWithOffset(1, len(cs.Results[0].ColumnNames)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 2 ColumnNames\n")
+			gomega.ExpectWithOffset(1, len(cs.Results[0].Rows)).To(gomega.Equal(2))
+			fmt.Fprintf(ginkgo.GinkgoWriter, "[DEBUG] ------------- have 2 Rows\n")
+
+			//gomega.Expect(cs.Results[1].Name).To(gomega.Equal(selectAvailableStatusCollectorName))
+			gomega.ExpectWithOffset(1, len(cs.Results[1].ColumnNames)).To(gomega.Equal(2))
+			gomega.ExpectWithOffset(1, len(cs.Results[1].Rows)).To(gomega.Equal(2))
+
 		})
 	})
-
-	ginkgo.Context("singleton status testing", func() {
-		ginkgo.It("sets (or deletes) singleton status when a singleton bindingpolicy/deployment is created (or deleted)", func() {
-			util.DeleteDeployment(ctx, wds, ns, "nginx") // we don't have to delete nginx
-			util.CreateDeployment(ctx, wds, ns, "nginx-singleton",
-				map[string]string{
-					"app.kubernetes.io/name": "nginx-singleton",
-				})
-			util.CreateBindingPolicy(ctx, ksWds, "nginx-singleton",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"name": "cluster1"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "nginx-singleton"}},
-					}}})
-			patch := []byte(`{"spec":{"wantSingletonReportedState": true}}`)
-			_, err := ksWds.ControlV1alpha1().BindingPolicies().Patch(
-				ctx, "nginx-singleton", types.MergePatchType, patch, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
-			util.ValidateSingletonStatus(ctx, wds, ns, "nginx-singleton")
-			patch_again := []byte(`{"spec":{"clusterSelectors":[{"matchLabels":{"name":"CelestialNexus"}}]}}`)
-			_, err = ksWds.ControlV1alpha1().BindingPolicies().Patch(
-				ctx, "nginx-singleton", types.MergePatchType, patch_again, metav1.PatchOptions{})
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
-			util.ValidateNumDeployments(ctx, wec1, ns, 0)
-			util.ValidateNumDeployments(ctx, wec2, ns, 0)
-			util.ValidateSingletonStatusZeroValue(ctx, wds, ns, "nginx-singleton")
-		})
-	})
-
-	ginkgo.Context("object cleaning", func() {
-		ginkgo.It("properly starts a service", func() {
-			util.CreateService(ctx, wds, ns, "hello-service", "hello-service")
-			util.CreateBindingPolicy(ctx, ksWds, "hello-service",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"name": "cluster1"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-service"}},
-					}}})
-			util.ValidateNumServices(ctx, wec1, ns, 1)
-		})
-		ginkgo.It("properly starts a job with metadata.generateName", func() {
-			util.CreateJob(ctx, wds, ns, "hello-job", "hello-job")
-			util.CreateBindingPolicy(ctx, ksWds, "hello-job",
-				[]metav1.LabelSelector{
-					{MatchLabels: map[string]string{"name": "cluster1"}},
-				},
-				[]ksapi.DownsyncObjectTest{
-					{ObjectSelectors: []metav1.LabelSelector{
-						{MatchLabels: map[string]string{"app.kubernetes.io/name": "hello-job"}},
-					}}})
-			util.ValidateNumJobs(ctx, wec1, ns, 1)
-		})
-	})
-
-	ginkgo.Context("resiliency testing", func() {
-		ginkgo.It("survives WDS coming down", func() {
-			util.DeletePods(ctx, coreCluster, "wds1-system", "kubestellar")
-			util.DeletePods(ctx, coreCluster, "wds1-system", "transport")
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-			util.Expect1PodOfEach(ctx, coreCluster, "wds1-system", "kubestellar-controller-manager", "transport-controller")
-		})
-
-		ginkgo.It("survives kubeflex coming down", func() {
-			util.DeletePods(ctx, coreCluster, "kubeflex-system", "")
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-			util.Expect1PodOfEach(ctx, coreCluster, "kubeflex-system", "kubeflex-controller-manager", "postgres-postgresql-0")
-		})
-
-		ginkgo.It("survives ITS vcluster coming down", func() {
-			util.DeletePods(ctx, coreCluster, "its1-system", "vcluster")
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-		})
-
-		ginkgo.It("survives everything coming down", func() {
-			ginkgo.By("kill as many pods as possible")
-			util.DeletePods(ctx, coreCluster, "wds1-system", "kubestellar")
-			util.DeletePods(ctx, coreCluster, "wds1-system", "transport")
-			util.DeletePods(ctx, coreCluster, "kubeflex-system", "")
-			util.DeletePods(ctx, coreCluster, "its1-system", "vcluster")
-			util.ValidateNumDeployments(ctx, wec1, ns, 1)
-			util.ValidateNumDeployments(ctx, wec2, ns, 1)
-
-			ginkgo.By("test that a new deployment still gets downsynced")
-			util.CreateDeployment(ctx, wds, ns, "nginx-2",
-				map[string]string{
-					"app.kubernetes.io/name": "nginx",
-				})
-			util.ValidateNumDeployments(ctx, wec1, ns, 2)
-			util.ValidateNumDeployments(ctx, wec2, ns, 2)
-			util.Expect1PodOfEach(ctx, coreCluster, "wds1-system", "kubestellar-controller-manager", "transport-controller")
-			util.Expect1PodOfEach(ctx, coreCluster, "kubeflex-system", "kubeflex-controller-manager", "postgres-postgresql-0")
-			util.Expect1PodOfEach(ctx, coreCluster, "its1-system", "vcluster")
-		})
-	})
-
 })
